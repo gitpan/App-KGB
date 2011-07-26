@@ -1,0 +1,48 @@
+---
+abstract: 'collabourative IRC helper'
+author: []
+build_requires:
+  Test::Compile: 0
+  Test::Pod: 0
+  Test::Pod::Coverage: 0
+  Test::Simple: 0.92
+  autodie: 0
+configure_requires:
+  Module::Build: 0.36
+generated_by: 'Module::Build version 0.3603'
+license: gpl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: App::KGB
+provides:
+  App::KGB:
+    file: lib/App/KGB.pm
+    version: 1.07
+  App::KGB::Change:
+    file: lib/App/KGB/Change.pm
+  App::KGB::Client:
+    file: lib/App/KGB/Client.pm
+  App::KGB::Client::Git:
+    file: lib/App/KGB/Client/Git.pm
+  App::KGB::Client::ServerRef:
+    file: lib/App/KGB/Client/ServerRef.pm
+  App::KGB::Client::Subversion:
+    file: lib/App/KGB/Client/Subversion.pm
+  App::KGB::Commit:
+    file: lib/App/KGB/Commit.pm
+requires:
+  Class::Accessor: 0
+  Digest::SHA: 0
+  Git: 0
+  IPC::System::Simple: 0
+  POE: 0
+  POE::Component::IRC: 5.56
+  POE::Component::Server::SOAP: 0
+  Proc::PID::File: 0
+  SOAP::Lite: 0
+  YAML: 0
+  perl: 5.010
+resources:
+  license: http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt
+version: 1.07

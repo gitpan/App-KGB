@@ -1,0 +1,8 @@
+^debian/
+\.git
+\.svn
+^_build
+^blib
+^Build$
+MANIFEST.bak
+^MYMETA.yml$

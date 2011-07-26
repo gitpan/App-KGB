@@ -1,0 +1,115 @@
+1.07:
+  [ Damyan Ivanov ]
+  * Client::Git: use --format=raw when describing annotated tags
+1.06:
+  [ gregor herrmann ]
+  * kgb-bot:
+    - fix typo when accessing global config
+    - call polygen_available with full class name
+  [ Damyan Ivanov ]
+  * kgb-bot: drop the asterix prefix from revision number
+  * Makefile: fix (real|dist)clean targets to use ./Build for the real work
+  * App::KGB::Change:
+    + fix typo in POD
+    + make the stringification method public and document it
+  * t/52-client-git.t: when comparing changes, force objects to stringify
+  * MANIFEST.SKIP: add MYMETA.yml
+  * fix typo in Client::Subversion POD
+
+1.05:
+  * kgb-bot: use File::Which to find polygen binary; split out the
+    polygen-finding function; closes: #593631
+  * kgb-bot: check existence of polygen binary before using it;
+    closes: #593633
+  * add gregor to copyright holders
+  * move polygen detection entirely at runtime
+  * any problems in finding polygen binary are logged only when debug is
+    enabled as a counter-measure against remotely-assisted log abuse
+
+1.04:
+  * use Digest::SHA from core instead of ::SHA1
+  * remove references to Svn::* from Build.PL
+    Closes: #582739 (by working around #589812)
+
+1.03:
+  * Synchronized versions of kgb-bot and KGB
+
+1.02:
+  * Protocol v2
+    + Adds a new parameter, revision prefix, which is printed plain before the
+      bold commit ID
+    + The default revision prefix is empty ('')
+    + Subversion revision prefix is 'r'
+
+1.01:
+  * Client: drop branch/module detection if not all changed paths are in the
+    same branch/module
+
+1.00:
+  * ServerRef: send commit_id as a string
+  * Commit: decode UTF-8 log messages
+  * ServerRef: encode all strings before sending
+
+0.16:
+  * bot:
+    + print the path information part along the author and revision
+
+0.15
+  * bot:
+    + bump years of copyright
+    + make manual page speak about 'kgb-bot', not 'KGB'
+    + out(): this is a class method, do not print the first argument
+    + remove the '_ECHO_' network
+  * Git:
+    + more robust commit parsing
+    + fix describing newly created branches
+  * client:
+    + fail gracefuly when repo type module is not available
+  * tests
+    + support sending test commits to a live running bot when
+      TEST_KGB_BOT_RUNNING is in the environment
+
+0.14
+  * Git: fix describing merge commits
+  * bot: replace change flags (A+)... with colors
+  * bot: avoid sending changed files list for commits that don't
+    contain changed files
+  * bot: always detect common changes directory
+
+0.13
+  * kgb-bot: fix the code detecting common root for all changes
+
+0.12
+  * add a test ensuring that App::KGB and kgb-bot are the same version
+  * client
+    + honor branch and module supplied by commit
+    + make server choice stable within one client call
+    + Git
+      - drop autodie and check for error when calling open()
+      - when describing changes, use App::KGB::Change objects
+      - fix parsing of multi-line log messages
+      - fix reverse commit order on branch updates
+      - special handling of signed/annotated tags
+      - use raw commit logs to detect file additions/removals
+
+0.11
+  * move generation of a smart answers to a subroutine
+  * make the autoresponder use polygen
+  * fix typo in an error message
+
+0.10
+  * kgb-bot has its own version. no longer pulls the client via App::KGB
+
+0.09
+  * print unhandled IRC stuff only when debugging is enabled
+  * implement logging
+  * drop auto-rejoin TODO item (sort of done)
+  * move discovery of sender's net into a subroutine
+  * respond to CTCP requests
+  * implement !version command
+  * MANIFEST.SKIP: also skip blib
+  * make orig target invoke d/rules clean to ensure the tarball is created
+    off a clean tree
+  * test-server.conf: use local irc server for testing
+    test server considers all local users admins
+  * handle both public and private messages

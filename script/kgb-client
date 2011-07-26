@@ -1,0 +1,353 @@
+#!/usr/bin/perl
+use utf8;
+require v5.10.0;
+# vim: ts=4:sw=4:et:ai:sts=4
+#
+# KGB - an IRC bot helping collaboration
+# Copyright © 2008 Martín Ferrari
+# Copyright © 2009 Damyan Ivanov
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51
+# Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+use strict;
+use warnings;
+
+=head1 NAME
+
+kgb-client - relay commits to KGB servers
+
+=head1 SYNOPSIS
+
+=over
+
+=item B<kgb-client> --conf I</path/to/config> [I<other-option> ...]
+
+=item B<kgb-client> --uri I<http://some.server:port/service>
+                    --password I<password>
+                    --repo-id I<repository>
+                    --timeout I<timeout-in-seconds>
+
+=item B<kgb-client> I<option>... I</svn/repo> I<revision>
+
+=item B<kgb-client> I<option>... I<old-rev> I<new-rev> I<ref-name>
+
+=back
+
+=head1 DESCRIPTION
+
+B<kgb-client> is the client counterpart of L<kgb-bot(1)>. Intented usage is as
+a hook in your version control system, executed after the repository gets
+updated. It analyzes the commit(s) and then relays the information about the
+repository, branch, author, modified files and change log to the KGB server,
+whch will show it on IRC.
+
+=head1 CONFIGURATION
+
+=over
+
+=item B<--conf> I<configuration file>
+
+Specifies the path to kgb-client configuration file.
+
+=back
+
+Configuration options (except B<--conf>) may be specified both in the
+configuration file and on the command line. Usually you want to have all the
+options in a configuration file, because having passwords on the command line
+is insecure. The configuration file also gives more control, for example it
+supports multple servers and multiple ways of detection of branch and module
+names.
+
+The configration file is in L<YAML> format. Unless noted otherwise, all the
+options below can be used on the command line if prepended with two dashes. An
+example configuration file is shipped with the distribution.
+
+=over
+
+=item B<repository> I<type>
+
+Specifies the type of the repository B<kgb-client> shall be working with.
+Currently defaults to C<svn>.
+
+=item B<repo-id> I<repository name>
+
+Short repository identifier. Will be used for identifying the repository to the
+KGB daemon, which will also use this for IRC notifications. B<Mandatory>.
+
+=item B<uri> I<URI>
+
+URI of the KGB server. Something like C<http://some.server:port>. B<Mandatory>.
+
+=item B<proxy> I<URI>
+
+URI of the SOAP proxy. If not given, it is the value of the B<uri> option, with
+C<?session=KGB> added.
+
+=item B<password> I<password>
+
+Password for authentication to the KGB server.
+
+=item B<timeout> I<seconds>
+
+Timeout for server communication. Default is 15 seconds, as we want instant IRC
+and commit response.
+
+=item B<servers>
+
+Only available in the configuration file.
+
+An array of servers, each described using B<uri>, B<proxy>, B<password> and
+B<timeout> options. When several servers are configured, B<kgb-client> chooses
+one randomly. If a given server times out or there is another problem with
+communication, B<kgb-client> tries another server.
+
+The top-level B<uri>, B<proxy>, B<password> and B<timeout> options are treated
+as describing an extra server to the servers described in B<servers> array.
+
+The B<password> and B<timeout> options default too the top-level options of the
+same name.
+
+=item B<verbose>
+
+Makes the whole process more verbose.
+
+=back
+
+=head2 Branches and modules
+
+Sometimes development is done in multiple branches. Simetimes, a project
+consists of multiple sub-projects or modules. It is nice to have the module and
+branc highlighted in notifications. There are two options to help determining
+the module and branch names from a list of changes.
+
+These options are mainly useful when using Subversion. Git commits carry
+implicit branch information and chances are that sub-projects use separate Git
+repositories.
+
+=over
+
+=item B<branch-and-module-re>
+
+A list of regular expressions that serve for detection of branch and module of
+commits. Each item from the list is tried in turn, until an item is found that
+matches all the paths that were modified by the commit. Regular expressions
+must have two captures: the first one giving the branch name, and the second
+one giving the module name.
+
+All the paths that were modified by the commit must resolve to the same branch
+and module in order for the branch and module to be transmitted to the KGB
+server.
+
+Hint: use () to match empty branch or module if the concept is not applicable.
+Like:
+
+    branch-and-module-re:
+        - "^/(trunk)/([^/]+)/"
+        - "^()/(website)/"
+    # either a sub-project in /trunk/<subproject>
+    # or a file in the website, which is matched like a module
+
+=item B<branch-and-module-re-swap> I<1>
+
+If you can only provide the module name in the first capture and the branch
+name in the second, use this option to signal the fact to B<kgb-client>. The
+setting is in effect for all patterns.
+
+    branch-and-module-re-swap: 1
+    branch-and-module-re:
+        - "^/([^/]+)/(trunk|tags)/"
+        - "^/(website)/()"
+    # either a sub-project in /<subproject>
+    # or a file in the website, which is matched like a module
+
+=item B<module> I<name>
+
+In the case of sub-projects that use separate Git repositories, you may want to
+use explicit module name. Having this on the command line would allow for all
+the sub-project to share the configuration file (same B<repo-id>) while still
+having sub-project-specific notifications.
+
+=back
+
+=head1 SUPPORTED VERSION CONTROL SYSTEMS
+
+=head2 Subversion
+
+Installation requires calling B<kgb-client> with two command line arguments:
+
+=over
+
+=item I<path to the subversion repository>
+
+This is the physical path to the Subversion repository. Something like I</srv/svn/my-repo>
+
+=item I<revision>
+
+This is the revision number of the commit, that has triggered the hook.
+
+=back
+
+Both these arguments are supplied to the standard Subversion post-commit hooks.
+
+=head2 Git
+
+B<kgb-client> shall be installed as a B<post-recieve> hook. Something along the
+following shall do:
+
+    #!/bin/sh
+    /path/to/kgb-client --git-reflog - --conf /path/to.conf ...
+
+B<--git-reflog -> will make B<kgb-client> read the reflog information from standard
+input as any standard Git post-receive hook.
+
+There are other ways to give kgb-client information about Git reflog, mostly
+useful when debugging on in unusual situations. See L<App::KGB::Client::Git>.
+
+=head1 SEE ALSO
+
+=over
+
+=item L<App::KGB::Client>
+
+=item L<App::KGB::Client::Subversion>
+
+=item L<App::KGB::Client::Git>
+
+=back
+
+=cut
+
+use App::KGB::Client::ServerRef;
+use Getopt::Long;
+use YAML ();
+
+my ($conf_file, $uri,            $proxy,   $repo_id,
+    $password,  $timeout,        $verbose, $repo_type,
+    @br_mod_re, $br_mod_re_swap, $module,  $ignore_branch,
+    @servers,   $git_reflog,
+);
+GetOptions(
+    'conf=s'                     => \$conf_file,
+    'uri=s'                      => \$uri,
+    'proxy=s'                    => \$proxy,
+    'repo-id=s'                  => \$repo_id,
+    'pass|word=s'                => \$password,
+    'timeout=s'                  => \$timeout,
+    'branch-and-module-re=s'     => \@br_mod_re,
+    'br-mod-re=s'                => \@br_mod_re,
+    'branch-and-module-re-swap!' => \$br_mod_re_swap,
+    'br-mod-re!'                 => \$br_mod_re_swap,
+    'module=s'                   => \$module,
+    'ignore-branch=s'            => \$ignore_branch,
+    'repository=s'               => \$repo_type,
+    'verbose!'                   => \$verbose,
+    'git-reflog=s'               => \$git_reflog,
+) or exit 1;
+
+if( $conf_file )
+{
+    my $conf = YAML::LoadFile($conf_file)
+        or die "Error loading config from $conf_file\n";
+
+    $uri      ||= $conf->{uri};
+    $proxy    ||= $conf->{proxy};
+    $repo_id  ||= $conf->{'repo-id'};
+    $password ||= $conf->{password};
+    $timeout  ||= $conf->{timeout};
+    @br_mod_re = @{ $conf->{'branch-and-module-re'} }
+        if !@br_mod_re and $conf->{'branch-and-module-re'};
+    $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
+    $ignore_branch //= $conf->{'ignore-branch'};
+    $module //= $conf->{module};
+
+    @servers = map {
+        App::KGB::Client::ServerRef->new(
+            {   password => $password,
+                timeout  => $timeout,
+                verbose  => $verbose,
+                %$_
+            }
+            )
+        } @{ $conf->{servers} }
+        if $conf->{servers};
+}
+
+push @servers,
+    App::KGB::Client::ServerRef->new(
+    {   uri      => $uri,
+        password => $password,
+        timeout  => $timeout,
+        verbose  => $verbose,
+    }
+    ) if $uri;
+
+die "no servers difined. use 'uri' or 'servers' configuration options\n"
+    unless @servers;
+
+die "repo-id not given\n" unless $repo_id;
+
+my @client_args = (
+    repo_id        => $repo_id,
+    servers        => \@servers,
+    br_mod_re      => \@br_mod_re,
+    br_mod_re_swap => $br_mod_re_swap,
+    module         => $module,
+    ignore_branch  => $ignore_branch,
+    verbose        => $verbose,
+);
+
+$repo_type||= 'svn';
+
+if ( $repo_type eq 'svn' ) {
+    my($path, $rev) = @ARGV;
+    die "Repository path and revision must be given as arguments\n"
+        unless $path and $rev;
+
+    print "Processing r$rev of SVN repository $path\n"
+        if $verbose;
+
+    eval { require App::KGB::Client::Subversion; 1; }
+        or die "Subversion support unavailable\n"
+        . "Error loading App::KGB::Client::Subversion:\n"
+        . $@;
+
+    my $client = App::KGB::Client::Subversion->new(
+        {   @client_args,
+            repo_path      => $path,
+            revision       => $rev,
+        }
+    );
+
+    $client->process();
+}
+elsif ( $repo_type eq 'git' ) {
+    print "Processing Git receive pack\n"
+        if $verbose;
+
+    eval { require App::KGB::Client::Git; 1; }
+        or die "Git support unavailable\n"
+        . "Error loading App::KGB::Client::Git:\n"
+        . $@;
+
+    my $client = App::KGB::Client::Git->new(
+        { @client_args, reflog => $git_reflog } );
+
+    $client->process();
+
+}
+else {
+    die "Repository type '$repo_type' not supported\n";
+}
+
