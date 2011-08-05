@@ -1,0 +1,84 @@
+{
+   "abstract" : "collabourative IRC helper",
+   "author" : [
+      "unknown"
+   ],
+   "dynamic_config" : 1,
+   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.110930",
+   "license" : [
+      "open_source"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "App::KGB",
+   "prereqs" : {
+      "build" : {
+         "requires" : {
+            "Test::Compile" : 0,
+            "Test::Pod" : 0,
+            "Test::Pod::Coverage" : 0,
+            "Test::Simple" : "0.92",
+            "autodie" : 0
+         }
+      },
+      "configure" : {
+         "requires" : {
+            "Module::Build" : "0.38"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "Class::Accessor" : 0,
+            "Digest::SHA" : 0,
+            "Git" : 0,
+            "IPC::System::Simple" : 0,
+            "POE" : 0,
+            "POE::Component::IRC" : "5.56",
+            "POE::Component::Server::SOAP" : 0,
+            "Proc::PID::File" : 0,
+            "SOAP::Lite" : 0,
+            "YAML" : 0,
+            "perl" : "5.010"
+         }
+      }
+   },
+   "provides" : {
+      "App::KGB" : {
+         "file" : "lib/App/KGB.pm",
+         "version" : "1.08"
+      },
+      "App::KGB::Change" : {
+         "file" : "lib/App/KGB/Change.pm",
+         "version" : 0
+      },
+      "App::KGB::Client" : {
+         "file" : "lib/App/KGB/Client.pm",
+         "version" : 0
+      },
+      "App::KGB::Client::Git" : {
+         "file" : "lib/App/KGB/Client/Git.pm",
+         "version" : 0
+      },
+      "App::KGB::Client::ServerRef" : {
+         "file" : "lib/App/KGB/Client/ServerRef.pm",
+         "version" : 0
+      },
+      "App::KGB::Client::Subversion" : {
+         "file" : "lib/App/KGB/Client/Subversion.pm",
+         "version" : 0
+      },
+      "App::KGB::Commit" : {
+         "file" : "lib/App/KGB/Commit.pm",
+         "version" : 0
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "license" : [
+         "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
+      ]
+   },
+   "version" : "1.08"
+}

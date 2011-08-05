@@ -54,7 +54,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.06';
+our $VERSION = '1.08';
 
 use Cwd;
 

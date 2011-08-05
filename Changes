@@ -1,3 +1,6 @@
+1.08:
+  [ Damyan Ivanov ]
+  * Fix version disparity between App::KGB and kgb-bot
 1.07:
   [ Damyan Ivanov ]
   * Client::Git: use --format=raw when describing annotated tags

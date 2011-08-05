@@ -6,3 +6,4 @@
 ^Build$
 MANIFEST.bak
 ^MYMETA.yml$
+^MYMETA\.json$
