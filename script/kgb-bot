@@ -5,7 +5,7 @@ use utf8;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2008,2009,2010 Damyan Ivanov
+# Copyright © 2008,2009,2010,2011 Damyan Ivanov
 # Copyright © 2010 gregor herrmann
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -54,7 +54,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.09';
+our $VERSION = '1.10';
 
 use Cwd;
 
@@ -714,9 +714,13 @@ use warnings;
 use Digest::MD5 qw(md5_hex);
 use POE;
 use POE::Component::IRC::Common qw( parse_user matches_mask );
+use Schedule::RateLimiter;
 
 our %current = ();
 our $irc_object;
+our $autoresponse_limitter
+    = Schedule::RateLimiter->new( iterations => 10, seconds => 60,
+    block => 0 );
 
 # Handles the connection, disconnection and real-time configuration changes WRT
 # IRC servers and channels
@@ -924,8 +928,8 @@ sub get_smart_answer {
         return $polygen_joke if $polygen_joke;
     }
 
-    my $smart_answers = $KGB::config->{chanidx}{$chan}{smart_answers}
-        if $chan;
+    my $smart_answers
+        = $chan ? $KGB::config->{chanidx}{$chan}{smart_answers} : undef;
     return $smart_answers->[ ( int( rand( scalar(@$smart_answers) ) ) ) ]
         if $smart_answers;
 
@@ -940,13 +944,18 @@ sub get_smart_answer {
     return $smart_answers->[ ( int( rand( scalar(@$smart_answers) ) ) ) ]
         if $smart_answers;
 
-    return "I am stupid";
+    return undef;
 }
 
 sub got_a_message {
     my ( $kernel, $sender, $who, $where, $what ) = @_;
-    my $chan = $where->[0] if $where;    # coult be a private message
+    my $chan = $where ? $where->[0] : undef;    # could be a private message
     my $net = get_net($sender);
+
+    unless ( $autoresponse_limitter->event() ) {
+        warn "Auto response rate-limit reached.\n";
+        return undef;
+    }
 
     if ( $what =~ /^\!([a-z]+)$/ ) {
         $kernel->yield( irc_command => $1 => $who => $chan => $net );
@@ -979,7 +988,7 @@ sub irc_new_hash {
 
     my $seen_idx  = $heap->{seen_idx}  ||= {};
     my $seen_list = $heap->{seen_list} ||= [];
-    my $idx = $seen_idx->{$hash} if exists $seen_idx->{$hash};
+    my $idx = exists $seen_idx->{$hash} ? $seen_idx->{$hash} : undef;
 
     # if found, move to the top of the list
     if ( defined($idx) ) {

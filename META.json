@@ -13,10 +13,16 @@
       "version" : "2"
    },
    "name" : "App-KGB",
+   "no_index" : {
+      "directory" : [
+         "privinc"
+      ]
+   },
    "prereqs" : {
       "build" : {
          "requires" : {
             "Test::Compile" : 0,
+            "Test::Critic" : 0,
             "Test::Pod" : 0,
             "Test::Pod::Coverage" : 0,
             "Test::Simple" : "0.92",
@@ -39,6 +45,7 @@
             "POE::Component::Server::SOAP" : 0,
             "Proc::PID::File" : 0,
             "SOAP::Lite" : 0,
+            "Schedule::RateLimiter" : 0,
             "YAML" : 0,
             "perl" : "5.010"
          }
@@ -47,7 +54,7 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.09"
+         "version" : "1.10"
       },
       "App::KGB::Change" : {
          "file" : "lib/App/KGB/Change.pm",
@@ -80,5 +87,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
       ]
    },
-   "version" : "1.09"
+   "version" : "1.10"
 }

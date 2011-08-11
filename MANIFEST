@@ -1,6 +1,3 @@
-.pc/.quilt_patches
-.pc/.quilt_series
-.pc/.version
 Build.PL
 Changes
 eg/kgb-client.conf.sample
@@ -31,6 +28,8 @@ t/00-compile_shell_scripts.t
 t/50-client.t
 t/51-client_branch_module.t
 t/52-client-git.t
+t/critic.t
+t/perlcriticrc
 t/pod-coverage.t
 t/pod.t
 t/version.t

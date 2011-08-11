@@ -419,8 +419,11 @@ sub _describe_branch_changes {
 
     warn "head is $branch_head" if 0;
 
-    my @not_other = grep { $_ ne "^$branch_head" }
-        $self->_git->command( 'rev-parse', '--not', '--all' ) if $is_new_branch;
+    my @not_other
+        = $is_new_branch
+        ? grep { $_ ne "^$branch_head" }
+        $self->_git->command( 'rev-parse', '--not', '--all' )
+        : ();
 
     warn "\@not_other = ".join(' ', @not_other) if 0;
 

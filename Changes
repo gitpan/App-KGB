@@ -1,3 +1,10 @@
+1.10:
+  [ Daman Ivanov ]
+  * disable indexing of privinc/
+  * fix a couple of cases of conrdirtional declaration
+  * add a Perl::Critic test for conditional declarations
+  * bot: do not answer back if no answers are configured
+  * rate-lmit autoresponses
 1.09:
   [ Damyan Ivanov ]
   * Skip some tests when required SVN::* or Git modules are unavailable

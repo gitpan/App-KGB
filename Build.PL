@@ -11,6 +11,7 @@ my $builder = My::Builder->new(
     build_requires => {
         autodie               => 0,
         'Test::Compile'       => 0,
+        'Test::Critic'        => 0,
         'Test::Pod::Coverage' => 0,
         'Test::Pod'           => 0,
         'Test::Simple'        => '0.92',
@@ -25,6 +26,7 @@ my $builder = My::Builder->new(
         'POE::Component::Server::SOAP' => 0,
         'POE'                          => 0,
         'Proc::PID::File'              => 0,
+        'Schedule::RateLimiter'        => 0,
         'SOAP::Lite'                   => 0,
 # these barf with M::B in perl 5.12[.1] and version.pm available
 # we comment themm here as a workaround
@@ -42,6 +44,9 @@ my $builder = My::Builder->new(
     sbin_files => { 'script/kgb-bot' => 'sbin/kgb-bot' },
     etc_files => { 'etc/kgb.conf' => 'etc/kgb-bot/kgb.conf' },
     script_files => 'script/kgb-client',
+    no_index => {
+        directory => [ 'privinc' ],
+    },
 );
 
 $builder->add_build_element('sbin');
