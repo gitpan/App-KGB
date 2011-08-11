@@ -5,7 +5,7 @@ use lib qw(privinc);
 use My::Builder;
 
 my $builder = My::Builder->new(
-    dist_name   => 'App::KGB',
+    dist_name   => 'App-KGB',
     dist_version_from => 'lib/App/KGB.pm',
     license        => 'gpl',
     build_requires => {

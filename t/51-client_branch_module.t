@@ -2,7 +2,18 @@ use strict;
 use warnings;
 
 use autodie qw(:all);
-use Test::More tests => 1+8*3;
+use Test::More;
+
+BEGIN {
+    eval { require SVN::Core; 1 }
+        or plan skip_all => "SVN::Core required for testing the Subversion client";
+    eval { require SVN::Fs; 1 }
+        or plan skip_all => "SVN::Fs required for testing the Subversion client";
+    eval { require SVN::Repos; 1 }
+        or plan skip_all => "SVN::Repos required for testing the Subversion client";
+};
+
+plan tests => 1+8*3;
 
 use App::KGB::Change;
 use App::KGB::Client::Subversion;

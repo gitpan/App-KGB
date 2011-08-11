@@ -2,7 +2,14 @@ use strict;
 use warnings;
 
 use autodie qw(:all);
-use Test::More tests => 78;
+use Test::More;
+
+BEGIN {
+    eval { require Git; 1 }
+        or plan skip_all => "Git.pm required for testing Git client";
+}
+
+plan 'no_plan';
 
 use App::KGB::Change;
 use App::KGB::Client::Git;
@@ -137,15 +144,6 @@ ok -s "$dir/reflog", "post-receive hook logs";
 
 my $commit = $c->describe_commit;
 
-ok( defined($commit), 'commit creating master present' );
-is( $commit->branch, 'master' );
-is( $commit->id, $commits{master}->[0] );
-is( $commit->log, "branch created" );
-is( $commit->author, 'ser' );
-is( scalar @{ $commit->changes }, 0 );
-
-$commit = $c->describe_commit;
-
 ok( defined($commit), 'commit 1 present' );
 
 is( $commit->branch, 'master' );
@@ -199,14 +197,6 @@ is( $commit->log, "a removed" );
 is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(D)a' );
-
-$commit = $c->describe_commit;
-ok( defined($commit), 'other brench creating commit present' );
-is( $commit->branch, 'other' );
-is( $commit->id, $other_branch_point );
-is( $commit->log, "branch created" );
-is( $commit->author, 'ser' );
-is( scalar @{ $commit->changes }, 0 );
 
 $commit = $c->describe_commit;
 ok( defined($commit), 'commit 4 present' );
@@ -282,6 +272,28 @@ is( $commit->branch, 'other' );
 is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->log, "update readme with an über cléver cómmít with cyrillics: привет" );
+
+
+# parent-less branch
+$git->command( 'checkout', '--orphan', 'allnew' );
+$git->command( 'rm', '-rf', '.' );
+$git->command( 'commit', '--allow-empty', '-m', 'created empty branch allnew' );
+$git->command( 'checkout', 'master' );
+$git->command( 'merge', 'allnew' );
+push_ok();
+$commit = $c->describe_commit;
+ok( defined($commit), 'empty branch creation commit exists' );
+is( $commit->branch, 'master' );
+is( $commit->log, "created empty branch allnew" );
+$commit = $c->describe_commit;
+ok( defined($commit), 'empty branch merge commit exists' );
+is( $commit->branch, 'master' );
+is( $commit->log, "Merge branch 'allnew'" );
+# now the same in the allnew branch too
+$commit = $c->describe_commit;
+ok( defined($commit), 'empty branch creation commit exists' );
+is( $commit->branch, 'allnew' );
+is( $commit->log, "branch created" );
 
 
 ##### No more commits after the last

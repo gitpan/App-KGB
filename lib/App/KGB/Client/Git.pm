@@ -546,19 +546,6 @@ EOF
                 $new_rev );
 
             if (@commits) {
-
-                # mimic a commit that creates the branch
-                my $c = $self->_describe_ref( $commits[0]{id} );
-                unshift @commits, App::KGB::Commit->new(
-                    {   branch  => $branch,
-                        changes => [],
-                        log     => 'branch created',
-                        id      => $c->{parents}[0]
-                            || $c->{id},   # the initial commit has no parents
-                        author => $c->{author},
-                    }
-                );
-
                 push @{ $self->_commits }, @commits;
             }
             else {

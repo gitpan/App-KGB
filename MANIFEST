@@ -1,3 +1,6 @@
+.pc/.quilt_patches
+.pc/.quilt_series
+.pc/.version
 Build.PL
 Changes
 eg/kgb-client.conf.sample

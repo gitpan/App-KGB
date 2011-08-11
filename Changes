@@ -1,3 +1,7 @@
+1.09:
+  [ Damyan Ivanov ]
+  * Skip some tests when required SVN::* or Git modules are unavailable
+  * Fix dist_name from App::KGB to App-KGB
 1.08:
   [ Damyan Ivanov ]
   * Fix version disparity between App::KGB and kgb-bot
