@@ -19,6 +19,7 @@ Makefile
 MANIFEST			This list of files
 MANIFEST.SKIP
 META.json
+META.yml
 privinc/My/Builder.pm
 script/kgb-bot
 script/kgb-client
@@ -34,4 +35,3 @@ t/pod-coverage.t
 t/pod.t
 t/version.t
 TODO
-META.yml

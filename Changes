@@ -1,3 +1,5 @@
+1.12:
+  * Updated META.*
 1.11:
   * test creation of brand new, orphan branch
   * fix: no warnings when commits have no author
