@@ -1,3 +1,9 @@
+1.11:
+  * test creation of brand new, orphan branch
+  * fix: no warnings when commits have no author
+  * bot: log repository on authentication failure
+  * put tag name in changes for plain tags too
+  * bot: always decode parameters
 1.10:
   [ Daman Ivanov ]
   * disable indexing of privinc/

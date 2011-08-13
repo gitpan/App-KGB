@@ -54,7 +54,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 use Cwd;
 
@@ -514,8 +514,9 @@ sub do_commit_msg {
         ( $path_string eq '' ) ? () : $path_string );
 
     my $repo_head     = colorize( repository => $repo_id );
-    my $author_string = colorize( author     => $author );
-    $author_string .= " " . colorize( branch => $branch ) if defined($branch);
+    my $author_string = join( " ",
+        ( $author ? colorize( author => $author ) : () ),
+        ( $branch ? colorize( branch => $branch ) : () ) );
     $path_string = colorize( module => $module ) . " $path_string"
         if defined($module);
     my @string
@@ -608,12 +609,15 @@ sub do_commit_v2 {
         warn("Unknown repository\n");
         return;
     }
+    # Protocol v2 always uses UTF-8
+    utf8::decode($_)
+        for ( $repo_id, $rev, @$paths, $log, $author, $branch, $module );
     my $message = join( "",
         $repo_id,
         $rev,
         @$paths,
         $log,
-        $author,
+        ( defined($author) ? $author : () ),
         ( defined($branch) ? $branch : () ),
         ( defined($module) ? $module : () ),
         $KGB::config->{repositories}{$repo_id}{password} );
@@ -626,7 +630,7 @@ sub do_commit_v2 {
             $response, 'Client.Arguments',
             "Authentication failed for repository $repo_id"
         );
-        warn("Authentication failed\n");
+        warn("Authentication failed for repository $repo_id\n");
         return;
     }
     do_commit_msg(

@@ -216,7 +216,7 @@ is( $commit->id, $tagged );
 is( $commit->branch, 'tags' );
 is( $commit->log, "tag '1.0-beta' created" );
 is( $commit->author, undef );
-is( $commit->changes, undef );
+is( $commit->changes->[0]->as_string, '(A)1.0-beta' );
 
 
 ##### annotated tag
@@ -275,9 +275,23 @@ is( $commit->log, "update readme with an über cléver cómmít with cyrillics: 
 
 
 # parent-less branch
+    write_tmp 'reflog', '';
 $git->command( 'checkout', '--orphan', 'allnew' );
 $git->command( 'rm', '-rf', '.' );
 $git->command( 'commit', '--allow-empty', '-m', 'created empty branch allnew' );
+$git->command( 'push', '-u', 'origin', 'allnew' );
+    $c->_parse_reflog;
+    $c->_detect_commits;
+
+$commit = $c->describe_commit;
+ok( defined($commit), 'empty branch creation commit exists' );
+is( $commit->branch, 'allnew' );
+is( $commit->log, "created empty branch allnew" );
+##### No more commits after the last
+$commit = $c->describe_commit;
+is( $commit, undef );
+
+# now the same on the master branch
 $git->command( 'checkout', 'master' );
 $git->command( 'merge', 'allnew' );
 push_ok();
@@ -289,11 +303,6 @@ $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
-# now the same in the allnew branch too
-$commit = $c->describe_commit;
-ok( defined($commit), 'empty branch creation commit exists' );
-is( $commit->branch, 'allnew' );
-is( $commit->log, "branch created" );
 
 
 ##### No more commits after the last

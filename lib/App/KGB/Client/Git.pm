@@ -538,6 +538,7 @@ EOF
                     #author => $cmt->author,
                     log => "tag '$tag' created",
                     branch => 'tags',
+                    changes => [ App::KGB::Change->new("(A)$tag") ],
                 }
                 );
         }

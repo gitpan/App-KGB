@@ -164,7 +164,7 @@ sub send_changes {
     }
     # v1 protocol (well, we use '2', but the auth hash is the same as in v1)
     my $message = join("", $repo_id, $commit_id,
-        map( "$_", @commit_changes ), $commit_log, $commit_author,
+        map( "$_", @commit_changes ), $commit_log, $commit_author // (),
         $branch // (), $module // (), $password );
     utf8::encode($message);
     my $checksum = sha1_hex($message);
