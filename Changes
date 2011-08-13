@@ -1,3 +1,10 @@
+1.13:
+  * bot: add --simulate option
+  * remove dead code
+  * run-test-bot passes arguments to kgb-bot
+  * change the port of the test bot
+  * silence more git jabber during tests
+  * add tests for simulated IRC output
 1.12:
   * Updated META.*
 1.11:

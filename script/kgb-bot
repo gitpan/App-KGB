@@ -28,7 +28,7 @@ kgb-bot - an IRC bot helping collaborative work
 
 =head1 SYNOPSYS
 
-kgb-bot [--config I<file>] [--foreground]
+kgb-bot [--config I<file>] [--foreground] [--simulate I<file>]
 
 =head1 OPTIONS
 
@@ -43,6 +43,17 @@ Specify configuration file to load. Default is C</etc/kgb/kgb.conf>.
 Do not detach from console, print log messages to STDERR and do not become a
 daemon, useful for debugging.
 
+=item --simulate I<file>
+
+Do not connect to IRC. Instead, output each notification line to the given
+I<file>, like:
+
+    #chan repo user branch revision module changed-paths
+    #chan repo commit message line 1
+    #chan repo commit message line 2
+
+There are no colour codes in the output.
+
 =back
 
 =cut
@@ -54,7 +65,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.12';
+our $VERSION = '1.13';
 
 use Cwd;
 
@@ -256,7 +267,7 @@ sub _start {
         $KGB::config->{soap}{service_name}, 'commit',
         $KGB::config->{soap}{service_name}, 'commit',
     );
-    $kernel->yield("_irc_reconnect");
+    $kernel->yield("_irc_reconnect") unless $KGB::simulate;
 
     warn(
         "Listening on http://", $KGB::config->{soap}{server_addr},
@@ -366,6 +377,8 @@ our %color_codes = (
 
 sub colorize {
     my ( $style, $text ) = @_;
+
+    return $text if $KGB::simulate;
 
     my $color = $KGB::config->{colors}{$style};
 
@@ -549,7 +562,19 @@ sub do_commit_msg {
     @string = @tmp;
     foreach my $chan ( @{ $KGB::config->{repositories}{$repo_id}{channels} } )
     {
-        $kernel->yield( irc_notify => $chan => \@string );
+        if ($KGB::simulate) {
+            my $fh = IO::File->new(">> $KGB::simulate")
+                or die "Error opening $KGB::simulate for writing: $!\n";
+            $fh->autoflush(1);
+            $fh->binmode(':utf8');
+            for (@string) {
+                $fh->print("$chan $_\n");
+            }
+            $fh->close;
+        }
+        else {
+            $kernel->yield( irc_notify => $chan => \@string );
+        }
     }
     $response->content("OK");
     $kernel->post( SOAPServer => 'DONE', $response );
@@ -1082,15 +1107,21 @@ $KGB::out = \*STDERR;
 
 my $conf_file  = '/etc/kgb-bot/kgb.conf';
 my $foreground = 0;
+$KGB::simulate = 0;
+
 Getopt::Long::Configure("bundling");
 GetOptions(
     'c|config=s'   => \$conf_file,
     'f|foreground' => \$foreground,
+    'simulate=s'    => \$KGB::simulate,
 ) or die 'Invalid parameters';
 
 @ARGV and die "No command line arguments supported\n";
 
 KGB::load_conf($conf_file);
+
+use Cwd;
+$KGB::simulate = Cwd::realpath($KGB::simulate) if $KGB::simulate;
 
 unless ($foreground) {
     pipe IN, OUT or die "pipe: $!\n";

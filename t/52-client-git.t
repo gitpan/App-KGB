@@ -24,9 +24,6 @@ binmode $builder->output,         ":utf8";
 binmode $builder->failure_output, ":utf8";
 binmode $builder->todo_output,    ":utf8";
 
-my $port = 7645;
-my $password = 'v,sjflir';
-
 my $tmp_cleanup = not $ENV{TEST_KEEP_TMP};
 my $dir = tempdir( 'kgb-XXXXXXX', CLEANUP => $tmp_cleanup, DIR => File::Spec->tmpdir );
 diag "Temp directory $dir will pe kept" unless $tmp_cleanup;
@@ -37,6 +34,28 @@ sub write_tmp {
     open my $fh, '>', "$dir/$fn";
     print $fh $content;
     close $fh;
+}
+
+if ( $ENV{TEST_KGB_BOT_DUMP} ) {
+    diag "$ENV{TEST_KGB_BOT_DUMP} will be checked for IRC dump";
+    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 );
+    require Test::Differences;
+    Test::Differences->import;
+}
+
+my $dump_fh;
+
+sub is_irc_output {
+    return unless my $dump = $ENV{TEST_KGB_BOT_DUMP};
+    my $wanted = shift;
+
+    use IO::File;
+    $dump_fh ||= IO::File->new("< $dump")
+        or die "Unable to open $dump: $!";
+    $dump_fh->binmode(':utf8');
+    local $/ = undef;
+    $dump_fh->seek( $dump_fh->tell, 0 );
+    eq_or_diff( "" . <$dump_fh>, $wanted );
 }
 
 my $remote = "$dir/there.git";
@@ -63,11 +82,11 @@ system 'git', 'init', '--bare';
 use Cwd;
 my $R = getcwd;
 
-if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
+if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
     diag "will try to send notifications to locally running bot";
     write_tmp 'there.git/hooks/post-receive', <<"EOF";
 #!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --repo-id test --uri http://localhost:9999/ --pass "truely secret"
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --repo-id test --uri http://localhost:9998/ --pass "truely secret"
 EOF
 }
 else {
@@ -98,8 +117,8 @@ my $c = new_ok(
         {   repo_id => 'test',
             servers => [
                 App::KGB::Client::ServerRef->new(
-                    {   uri      => "http://127.0.0.1:$port/",
-                        password => $password,
+                    {   uri      => "http://127.0.0.1:1234/",
+                        password => "hidden",               # not used by this client instance
                     }
                 ),
             ],
@@ -138,6 +157,7 @@ do_commit('initial import');
 $git->command( 'remote', 'add', 'origin', "file://$remote" );
 push_ok;
 
+
 # now "$dir/reflog" shall have some refs
 #diag "Looking for the reflog in '$dir/reflog'";
 ok -s "$dir/reflog", "post-receive hook logs";
@@ -153,6 +173,9 @@ is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(A)a' );
 
+is_irc_output( "#test test ser master ".$commit->id." a
+#test test initial import
+" );
 
 
 ##### modify and add
@@ -174,6 +197,9 @@ is( scalar @{ $commit->changes }, 2 );
 is( $commit->changes->[0]->as_string, 'a' );
 is( $commit->changes->[1]->as_string, '(A)b' );
 
+is_irc_output("#test test ser master ".$commit->id." a b
+#test test some changes
+");
 
 ##### remove, banch, modyfy, add, tag; batch send
 $git->command( 'rm', 'a' );
@@ -189,7 +215,7 @@ push_ok();
 
 my $other_branch_point = $commits{master}[0];
 
-$commit = $c->describe_commit;
+my $c1 = $commit = $c->describe_commit;
 ok( defined($commit), 'commit 3 present' );
 is( $commit->branch, 'master' );
 is( $commit->id, shift @{ $commits{master} } );
@@ -198,7 +224,7 @@ is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(D)a' );
 
-$commit = $c->describe_commit;
+my $c2 = $commit = $c->describe_commit;
 ok( defined($commit), 'commit 4 present' );
 is( $commit->branch, 'other' );
 is( $commit->id, shift @{ $commits{other} } );
@@ -218,6 +244,13 @@ is( $commit->log, "tag '1.0-beta' created" );
 is( $commit->author, undef );
 is( $commit->changes->[0]->as_string, '(A)1.0-beta' );
 
+is_irc_output("#test test ser master ".$c1->id." a
+#test test a removed
+#test test ser other ".$c2->id." b c
+#test test a change in the other branch
+#test test tags ".$c2->id." 1.0-beta
+#test test tag '1.0-beta' created
+");
 
 ##### annotated tag
 w 'README', 'You read this!? Good boy/girl.';
@@ -226,7 +259,7 @@ do_commit( "add README for release\n\nas everybody knows, releases have to have 
 $git->command( 'tag', '-a', '-m', 'Release 1.0', '1.0-release' );
 push_ok();
 
-$commit = $c->describe_commit;
+$c1 = $commit = $c->describe_commit;
 ok( defined($commit), 'commit 6 present' );
 is( $commit->id, shift @{ $commits{other} } );
 is( $commit->branch, 'other' );
@@ -237,7 +270,7 @@ is( $commit->changes->[0]->as_string, '(A)README' );
 
 $tagged = $commit->id;
 
-$commit = $c->describe_commit;
+$c2 = $commit = $c->describe_commit;
 ok( defined($commit), 'annotated tag here' );
 is( $commit->branch, 'tags' );
 is( $commit->author, 'ser' );
@@ -245,6 +278,13 @@ is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->changes->[0]->as_string, '(A)1.0-release' );
 is( $commit->log, "Release 1.0\ntagged commit: $tagged" );
 
+is_irc_output("#test test ser other ".$c1->id." README
+#test test add README for release
+#test test as everybody knows, releases have to have READMEs
+#test test ser tags ".$c2->id." 1.0-release
+#test test Release 1.0
+#test test tagged commit: ".$c1->id."
+");
 
 # a hollow branch
 
@@ -259,6 +299,9 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 0 );
 is( $commit->log, "branch created" );
 
+is_irc_output("#test test ser hollow ".$commit->id." 
+#test test branch created
+");
 
 # some UTF-8
 w 'README', 'You dont read this!? Bad!';
@@ -273,13 +316,16 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->log, "update readme with an über cléver cómmít with cyrillics: привет" );
 
+is_irc_output("#test test ser other ".$commit->id." README
+#test test update readme with an über cléver cómmít with cyrillics: привет
+");
 
 # parent-less branch
     write_tmp 'reflog', '';
-$git->command( 'checkout', '--orphan', 'allnew' );
+$git->command( [ 'checkout', '--orphan', 'allnew' ], { STDERR => 0 } );
 $git->command( 'rm', '-rf', '.' );
 $git->command( 'commit', '--allow-empty', '-m', 'created empty branch allnew' );
-$git->command( 'push', '-u', 'origin', 'allnew' );
+$git->command( [ 'push', '-u', 'origin', 'allnew' ], { STDERR => 0 } );
     $c->_parse_reflog;
     $c->_detect_commits;
 
@@ -287,23 +333,33 @@ $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch creation commit exists' );
 is( $commit->branch, 'allnew' );
 is( $commit->log, "created empty branch allnew" );
+
+is_irc_output("#test test ser allnew ".$commit->id." 
+#test test created empty branch allnew
+");
+
 ##### No more commits after the last
 $commit = $c->describe_commit;
 is( $commit, undef );
 
 # now the same on the master branch
-$git->command( 'checkout', 'master' );
+$git->command( [ 'checkout', 'master' ], { STDERR => 0 } );
 $git->command( 'merge', 'allnew' );
 push_ok();
-$commit = $c->describe_commit;
+$c1 = $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch creation commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "created empty branch allnew" );
-$commit = $c->describe_commit;
+$c2 = $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
 
+is_irc_output("#test test ser master ".$c1->id." 
+#test test created empty branch allnew
+#test test ser master ".$c2->id." 
+#test test Merge branch 'allnew'
+");
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
