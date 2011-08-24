@@ -5,7 +5,7 @@ require v5.10.0;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009 Damyan Ivanov
+# Copyright © 2009, 2011 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -38,6 +38,7 @@ kgb-client - relay commits to KGB servers
                     --password I<password>
                     --repo-id I<repository>
                     --timeout I<timeout-in-seconds>
+                    --single-line-commits <off|forced|auto>
 
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
 
@@ -118,6 +119,30 @@ as describing an extra server to the servers described in B<servers> array.
 
 The B<password> and B<timeout> options default too the top-level options of the
 same name.
+
+=item single-line-commits I<off|forced|auto>
+
+Request different modes of commit message processing:
+
+=over
+
+=item I<off>
+
+No processing is done. The commit message is printed as was given, with each
+line in a separate IRC message, blank lines omitted. This is the only possible
+behaviour in versions before 1.14.
+
+=item forced
+
+Only the first line is sent to IRC, regardles of whether it is followed by a
+blank line or not.
+
+=item auto
+
+If the first line is followed by an empty line, only the first line is sent to
+IRC and the rest is ignored. This is the default since version 1.14.
+
+=back
 
 =item B<verbose>
 
@@ -233,10 +258,12 @@ use App::KGB::Client::ServerRef;
 use Getopt::Long;
 use YAML ();
 
-my ($conf_file, $uri,            $proxy,   $repo_id,
-    $password,  $timeout,        $verbose, $repo_type,
-    @br_mod_re, $br_mod_re_swap, $module,  $ignore_branch,
-    @servers,   $git_reflog,
+my ($conf_file,      $uri,        $proxy,
+    $repo_id,        $password,   $timeout,
+    $verbose,        $repo_type,  @br_mod_re,
+    $br_mod_re_swap, $module,     $ignore_branch,
+    @servers,        $git_reflog, $single_line_commits,
+    $status_dir,
 );
 GetOptions(
     'conf=s'                     => \$conf_file,
@@ -254,6 +281,8 @@ GetOptions(
     'repository=s'               => \$repo_type,
     'verbose!'                   => \$verbose,
     'git-reflog=s'               => \$git_reflog,
+    'single-line-commits=s'      => \$single_line_commits,
+    'status-dir=s'               => \$status_dir,
 ) or exit 1;
 
 if( $conf_file )
@@ -271,6 +300,8 @@ if( $conf_file )
     $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
     $ignore_branch //= $conf->{'ignore-branch'};
     $module //= $conf->{module};
+    $single_line_commits //= $conf->{'single-line-commits'};
+    $status_dir //= $conf->{'status-dir'};
 
     @servers = map {
         App::KGB::Client::ServerRef->new(
@@ -298,14 +329,22 @@ die "no servers difined. use 'uri' or 'servers' configuration options\n"
 
 die "repo-id not given\n" unless $repo_id;
 
+$single_line_commits //= 'auto';
+
+$single_line_commits =~ m/^(?:on|forced|auto)$/
+    or die "Unknown value for the --single-line-commits option "
+    . "('$single_line_commits')\n";
+
 my @client_args = (
-    repo_id        => $repo_id,
-    servers        => \@servers,
-    br_mod_re      => \@br_mod_re,
-    br_mod_re_swap => $br_mod_re_swap,
-    module         => $module,
-    ignore_branch  => $ignore_branch,
-    verbose        => $verbose,
+    repo_id             => $repo_id,
+    servers             => \@servers,
+    br_mod_re           => \@br_mod_re,
+    br_mod_re_swap      => $br_mod_re_swap,
+    module              => $module,
+    ignore_branch       => $ignore_branch,
+    verbose             => $verbose,
+    single_line_commits => $single_line_commits,
+    status_dir          => $status_dir,
 );
 
 $repo_type||= 'svn';

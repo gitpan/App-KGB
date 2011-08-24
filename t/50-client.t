@@ -51,7 +51,7 @@ if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
     print $h <<"EOF";
 #!/bin/sh
 
-PERL5LIB=$R/lib $R/script/kgb-client --repo-id test --uri http://localhost:9999 --pass "truely secret" \$1 \$2
+PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $r \$1 \$2
 EOF
     close $h;
     chmod 0755, "$repo/hooks/post-commit";

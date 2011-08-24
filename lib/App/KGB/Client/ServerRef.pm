@@ -21,6 +21,7 @@ package App::KGB::Client::ServerRef;
 
 use strict;
 use warnings;
+use feature 'switch';
 use Encode;
 
 =head1 NAME
@@ -37,7 +38,7 @@ App::KGB::Client::ServerRef - server instance in KGB client
         }
     );
 
-    $s->send_changes( $repo_id, $commit, $branch, $module );
+    $s->send_changes( $client, $commit, $branch, $module );
 
 =head1 DESCRIPTION
 
@@ -97,9 +98,7 @@ Message parameters are passed as arguments in the following order:
 
 =over
 
-=item Repository id.
-
-=item Revision prefix (printed plain in front of the bold Commit ID)
+=item Client instance (L<App::KGB::Client>)
 
 =item Commit (an instance of L<App::KGB::Commit>)
 
@@ -137,17 +136,24 @@ sub new {
 }
 
 sub send_changes {
-    my ( $self, $repo_id, $rev_prefix, $commit, $branch, $module ) = @_;
+    my ( $self, $client, $commit, $branch, $module ) = @_;
 
     my $s = SOAP::Lite->new( uri => $self->uri, proxy => $self->proxy );
     $s->transport->proxy->timeout( $self->timeout // 15 );
 
     # Detect utf8 strings and set the utf8 flag, or try to convert from latin1
+    my $repo_id = $client->repo_id;
     my $commit_id = $commit->id;
     my $commit_author = $commit->author;
     my $commit_log = $commit->log;
     my @commit_changes = @{ $commit->changes };
     my $password = $self->password;
+
+    given ( $client->single_line_commits ) {
+        when ('off')    { }     # keep it as it is
+        when ('forced') { $commit_log =~ s/\n.*//; }
+        when ('auto')   { $commit_log =~ s/^[^\n]+\K\n\n.*//; }
+    }
 
     foreach ( $repo_id, $commit_id, @commit_changes, $commit_log,
         $commit_author, $branch, $module, $password ) {
@@ -182,7 +188,7 @@ sub send_changes {
             (   map {
                     SOAP::Data->type(
                         string => Encode::encode( 'UTF-8', $_ ) )
-                    } ( $repo_id, $checksum, $rev_prefix, $commit_id )
+                    } ( $repo_id, $checksum, $client->rev_prefix, $commit_id )
             ),
             [ map { SOAP::Data->type( string => "$_" ) } @commit_changes ],
             (   map {

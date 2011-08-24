@@ -29,7 +29,7 @@ App::KGB - collabourative IRC helper
 
 =cut
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 =head1 DESCRIPTION
 

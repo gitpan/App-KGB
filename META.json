@@ -38,6 +38,8 @@
          "requires" : {
             "Class::Accessor" : 0,
             "Digest::SHA" : 0,
+            "DirHandle" : 0,
+            "File::Touch" : 0,
             "Git" : 0,
             "IPC::System::Simple" : 0,
             "POE" : 0,
@@ -54,7 +56,7 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.13"
+         "version" : "1.14"
       },
       "App::KGB::Change" : {
          "file" : "lib/App/KGB/Change.pm",
@@ -87,5 +89,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
       ]
    },
-   "version" : "1.13"
+   "version" : "1.14"
 }

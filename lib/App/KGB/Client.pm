@@ -6,7 +6,7 @@ require v5.10.0;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009,2010 Damyan Ivanov
+# Copyright © 2009,2010,2011 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -81,6 +81,9 @@ When several servers are configured, the list is shuffled and then the servers
 are tried one after another until a successful request is done, or the list is
 exhausted, in which case an exception is thrown.
 
+When shuffling, preference is added to the last server used by the client, or
+by other clients (given C<status_dir> is configured).
+
 =item B<br_mod_re>
 
 A list of regular expressions (simple strings, not L<qr> objects) that serve
@@ -114,6 +117,41 @@ Forces explicit module name, overriding the branch and module detection. Useful
 in Git-hosted sub-projects that want to share single configuration file, but
 still want module indication in notifications.
 
+=item single_line_commits I<off|forced|auto>
+
+Request different modes of commit message processing:
+
+=over
+
+=item I<off>
+
+No processing is done. The commit message is printed as was given, with each
+line in a separate IRC message, blank lines omitted. This is the only possible
+behaviour in versions before 1.14.
+
+=item forced
+
+Only the first line is sent to IRC, regardles of whether it is followed by a
+blank line or not.
+
+=item auto
+
+If the first line is followed by an empty line, only the first line is sent to
+IRC and the rest is ignored. This is the default since version 1.14.
+
+=back
+
+=item status_dir
+
+Specifies a directory to store information about the last server contacted
+successfuly. The client would touch files in that directory after successful
+completion of a notification with remote server.
+
+Later, when asked to do another notification, the client would start from the
+most recently contacted server. If that was contacted too far in the past, the
+information in the directory is ignored and a random server is picked, as
+usual.
+
 =item verbose
 
 Print diagnostic information.
@@ -124,14 +162,17 @@ Print diagnostic information.
 
 require v5.10.0;
 use Carp qw(confess);
+use Digest::MD5 qw(md5_hex);
 use Digest::SHA qw(sha1_hex);
+use DirHandle ();
+use File::Touch qw(touch);
 use SOAP::Lite;
 use Getopt::Long;
 use List::Util ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
     qw( repo_id servers br_mod_re br_mod_re_swap module ignore_branch
-        verbose _last_server )
+        single_line_commits status_dir verbose _last_server )
 );
 
 =head1 CONSTRUCTOR
@@ -163,6 +204,17 @@ sub new {
         or confess "'servers' must be an arrayref";
 
     @{ $self->servers } or confess "No 'servers' specified";
+
+    if ( $self->status_dir ) {
+        if ( not -e $self->status_dir ) {
+            warn "Status directory ".$self->status_dir." doesn't exist.\n";
+            $self->status_dir(undef);
+        }
+        elsif ( not -d $self->status_dir ) {
+            warn $self->status_dir." is not a directory\n";
+            $self->status_dir(undef);
+        }
+    }
 
     return $self;
 }
@@ -266,6 +318,78 @@ sub detect_branch_and_module {
     return ( $branch, $module );
 }
 
+=item shuffle_servers
+
+Returns a shuffled variant of C<< $self->servers >>. It considers the last
+successfuly used server by this client instance and puts it first. If there is
+no such server, it considers the state in C<status_dir> and picks the last
+server noted there, if it was used in the last 5 minutes.
+
+=cut
+
+sub shuffle_servers {
+    my $self = shift;
+
+    my @servers = List::Util::shuffle( @{ $self->servers } );
+
+    if ( $self->_last_server ) {
+        # just put the last server first in the list
+        @servers = sort {
+            return -1 if $a->uri eq $self->_last_server->uri;
+            return +1 if $b->uri eq $self->_last_server->uri;
+            return 0;
+        } @servers;
+    }
+    elsif ( $self->status_dir ) {
+        # pick a server from the status directory
+        my %hashes;
+        do {
+            my $i = 0;
+            for (@servers) {
+                $hashes{ md5_hex( $_->uri ) } = $i++;
+            }
+        };
+        my $d = DirHandle->new( $self->status_dir );
+        my $latest_stamp;
+        my $latest_hash;
+        if ( defined $d ) {
+            my $now = time;
+            while( defined( my $f = $d->read ) ) {
+                next
+                    unless $f =~ /^kgb-client.([0-9a-f]+)$/
+                        and exists( $hashes{$1} );
+
+                my $file = File::Spec->catdir($self->status_dir, $f);
+
+                my $stamp = (stat $file)[9];
+
+                if ( $latest_stamp ) {
+                    if( $latest_stamp < $stamp ) {
+                        $latest_stamp = $stamp;
+                        $latest_hash = $1;
+                    }
+                }
+                elsif ( $stamp >= ( $now - 300 ) ) {
+                    # accessed in the last 5 minutes, consider it
+                    $latest_stamp = $stamp;
+                    $latest_hash  = $1;
+                }
+            }
+
+            if ( $latest_stamp ) {
+                my $winner = splice( @servers, $hashes{$latest_hash}, 1 );
+                unshift @servers, $winner;
+            }
+        }
+        else {
+            warn "Unable to read directory ".$self->status_dir."\n";
+            $self->status_dir(undef);
+        }
+    }
+
+    return @servers;
+}
+
 =item process_commit ($commit)
 
 Processes a single commit, trying to send the changes summary to each of the
@@ -292,24 +416,20 @@ sub process_commit {
     $branch = undef
         if $branch and $branch eq ( $self->ignore_branch // '' );
 
-    my @servers = List::Util::shuffle( @{ $self->servers } );
-
-    if ( $self->_last_server ) {
-        # just put the last server first in the list
-        @servers = sort {
-            return -1 if $a->uri eq $self->_last_server->uri;
-            return +1 if $b->uri eq $self->_last_server->uri;
-            return 0;
-        } @servers;
-    }
+    my @servers = $self->shuffle_servers;
 
     # try all servers in turn until someone succeeds
     my $failure;
     for my $srv (@servers) {
         $failure = eval {
-            $srv->send_changes( $self->repo_id, $self->rev_prefix, $commit,
-                $branch, $module );
+            $srv->send_changes( $self, $commit, $branch, $module );
             $self->_last_server($srv);
+            touch(
+                File::Spec->catfile(
+                    $self->status_dir,
+                    sprintf( "kgb-client.%s", md5_hex( $srv->uri ) )
+                )
+            ) if $self->status_dir;
             0;
         } // 1;
 

@@ -1,3 +1,19 @@
+1.14:
+  * Client:
+   + pass the client instance to the server ref
+   + add an option to keep the last used server in a directory
+  * Server:
+   + do not pre-pad $path_string if it is empty
+   + make the message separator colorizable (and leave gray for now)
+   + avoid calling md5_hex with wide characters
+  * Both:
+   + add support for single line commit notifications
+  * Meta:
+   + add MANIFEST and META.yml to MANIFEST (and the distribution)
+  * Misc
+   + provide examples for running two test bots
+   + provide test client configuration
+   + use sample test client config in tests
 1.13:
   * bot: add --simulate option
   * remove dead code

@@ -23,7 +23,5 @@ clean:
 
 realclean distclean:
 	[ ! -e Build ] || ./Build $@
-	[ ! -e MANIFEST ] || rm MANIFEST
-	[ ! -e META.yml ] || rm META.yml
 
 # vim: noet

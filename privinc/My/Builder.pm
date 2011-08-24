@@ -13,7 +13,7 @@ sub ACTION_orig {
     my $pkg_name = 'kgb-bot';
     rename "$dn-$ver.tar.gz", "../$pkg_name\_$ver.orig.tar.gz";
     $self->ACTION_distclean;
-    unlink 'MANIFEST', 'MANIFEST.bak', 'META.yml';
+    unlink 'MANIFEST.bak';
     print "../$pkg_name\_$ver.orig.tar.gz ready.\n";
 }
 

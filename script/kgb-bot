@@ -65,7 +65,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 use Cwd;
 
@@ -196,6 +196,7 @@ sub read_conf ($) {
     $conf->{colors}{author}     ||= 'green';
     $conf->{colors}{branch}     ||= 'brown';
     $conf->{colors}{module}     ||= 'purple';
+    $conf->{colors}{separator}  ||= '';
 
     $conf->{colors}{addition}     ||= 'green';
     $conf->{colors}{modification} ||= 'teal';
@@ -535,8 +536,15 @@ sub do_commit_msg {
     my @string
         = "$repo_head $author_string $rev_prefix"
         . colorize( revision => $rev )
-        . " $path_string";
-    push @string, "$repo_head $_" for @log;
+        . ( $path_string ? " $path_string" : '' );
+
+    if ( 1 == @log and length($log[0]) <= 80 ) {
+        $string[0] .= ' '.colorize(separator=>'*').' ' . $log[0];
+    }
+    else {
+        push @string, "$repo_head $_" for @log;
+    }
+
     my @tmp;
 
     # Standard says 512 (minus \r\n), anyway that's further trimmed when
@@ -1042,6 +1050,7 @@ sub irc_notify {
     my ( $kernel, $heap, $chan, $str ) = @_[ KERNEL, HEAP, ARG0, ARG1 ];
 
     my $part = substr( $str->[0], 0, 100 );
+    utf8::encode($part);
     my $hash = md5_hex( $chan, $part );
 
     if ( exists $heap->{seen_idx}{$hash} ) {

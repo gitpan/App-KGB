@@ -86,7 +86,7 @@ if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
     diag "will try to send notifications to locally running bot";
     write_tmp 'there.git/hooks/post-receive', <<"EOF";
 #!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --repo-id test --uri http://localhost:9998/ --pass "truely secret"
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $dir/hook.log 2>&1
 EOF
 }
 else {
@@ -173,9 +173,7 @@ is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(A)a' );
 
-is_irc_output( "#test test ser master ".$commit->id." a
-#test test initial import
-" );
+is_irc_output( "#test test ser master ".$commit->id." a | initial import\n" );
 
 
 ##### modify and add
@@ -197,9 +195,7 @@ is( scalar @{ $commit->changes }, 2 );
 is( $commit->changes->[0]->as_string, 'a' );
 is( $commit->changes->[1]->as_string, '(A)b' );
 
-is_irc_output("#test test ser master ".$commit->id." a b
-#test test some changes
-");
+is_irc_output("#test test ser master ".$commit->id." a b | some changes\n");
 
 ##### remove, banch, modyfy, add, tag; batch send
 $git->command( 'rm', 'a' );
@@ -244,13 +240,9 @@ is( $commit->log, "tag '1.0-beta' created" );
 is( $commit->author, undef );
 is( $commit->changes->[0]->as_string, '(A)1.0-beta' );
 
-is_irc_output("#test test ser master ".$c1->id." a
-#test test a removed
-#test test ser other ".$c2->id." b c
-#test test a change in the other branch
-#test test tags ".$c2->id." 1.0-beta
-#test test tag '1.0-beta' created
-");
+is_irc_output("#test test ser master ".$c1->id." a | a removed
+#test test ser other ".$c2->id." b c | a change in the other branch
+#test test tags ".$c2->id." 1.0-beta | tag '1.0-beta' created\n");
 
 ##### annotated tag
 w 'README', 'You read this!? Good boy/girl.';
@@ -278,9 +270,7 @@ is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->changes->[0]->as_string, '(A)1.0-release' );
 is( $commit->log, "Release 1.0\ntagged commit: $tagged" );
 
-is_irc_output("#test test ser other ".$c1->id." README
-#test test add README for release
-#test test as everybody knows, releases have to have READMEs
+is_irc_output("#test test ser other ".$c1->id." README | add README for release
 #test test ser tags ".$c2->id." 1.0-release
 #test test Release 1.0
 #test test tagged commit: ".$c1->id."
@@ -299,9 +289,7 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 0 );
 is( $commit->log, "branch created" );
 
-is_irc_output("#test test ser hollow ".$commit->id." 
-#test test branch created
-");
+is_irc_output("#test test ser hollow ".$commit->id." | branch created\n");
 
 # some UTF-8
 w 'README', 'You dont read this!? Bad!';
@@ -316,9 +304,7 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->log, "update readme with an über cléver cómmít with cyrillics: привет" );
 
-is_irc_output("#test test ser other ".$commit->id." README
-#test test update readme with an über cléver cómmít with cyrillics: привет
-");
+is_irc_output("#test test ser other ".$commit->id." README | update readme with an über cléver cómmít with cyrillics: привет\n");
 
 # parent-less branch
     write_tmp 'reflog', '';
@@ -334,9 +320,7 @@ ok( defined($commit), 'empty branch creation commit exists' );
 is( $commit->branch, 'allnew' );
 is( $commit->log, "created empty branch allnew" );
 
-is_irc_output("#test test ser allnew ".$commit->id." 
-#test test created empty branch allnew
-");
+is_irc_output("#test test ser allnew ".$commit->id." | created empty branch allnew\n");
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
@@ -355,11 +339,8 @@ ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
 
-is_irc_output("#test test ser master ".$c1->id." 
-#test test created empty branch allnew
-#test test ser master ".$c2->id." 
-#test test Merge branch 'allnew'
-");
+is_irc_output("#test test ser master ".$c1->id." | created empty branch allnew
+#test test ser master ".$c2->id." | Merge branch 'allnew'\n");
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
