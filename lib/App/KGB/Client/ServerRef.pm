@@ -152,7 +152,7 @@ sub send_changes {
     given ( $client->single_line_commits ) {
         when ('off')    { }     # keep it as it is
         when ('forced') { $commit_log =~ s/\n.*//; }
-        when ('auto')   { $commit_log =~ s/^[^\n]+\K\n\n.*//; }
+        when ('auto')   { $commit_log =~ s/^[^\n]+\K\n\n.*//s; }
     }
 
     foreach ( $repo_id, $commit_id, @commit_changes, $commit_log,

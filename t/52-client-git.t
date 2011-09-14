@@ -38,7 +38,7 @@ sub write_tmp {
 
 if ( $ENV{TEST_KGB_BOT_DUMP} ) {
     diag "$ENV{TEST_KGB_BOT_DUMP} will be checked for IRC dump";
-    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 );
+    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 ) if -e $ENV{TEST_KGB_BOT_DUMP};
     require Test::Differences;
     Test::Differences->import;
 }
@@ -173,7 +173,7 @@ is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(A)a' );
 
-is_irc_output( "#test test ser master ".$commit->id." a | initial import\n" );
+is_irc_output( "#test ser master ".$commit->id." a * initial import\n" );
 
 
 ##### modify and add
@@ -195,7 +195,7 @@ is( scalar @{ $commit->changes }, 2 );
 is( $commit->changes->[0]->as_string, 'a' );
 is( $commit->changes->[1]->as_string, '(A)b' );
 
-is_irc_output("#test test ser master ".$commit->id." a b | some changes\n");
+is_irc_output("#test ser master ".$commit->id." a b * some changes\n");
 
 ##### remove, banch, modyfy, add, tag; batch send
 $git->command( 'rm', 'a' );
@@ -240,14 +240,17 @@ is( $commit->log, "tag '1.0-beta' created" );
 is( $commit->author, undef );
 is( $commit->changes->[0]->as_string, '(A)1.0-beta' );
 
-is_irc_output("#test test ser master ".$c1->id." a | a removed
-#test test ser other ".$c2->id." b c | a change in the other branch
-#test test tags ".$c2->id." 1.0-beta | tag '1.0-beta' created\n");
+is_irc_output("#test ser master ".$c1->id." a * a removed
+#test ser other ".$c2->id." b c * a change in the other branch
+#test tags ".$c2->id." 1.0-beta * tag '1.0-beta' created\n");
 
 ##### annotated tag
-w 'README', 'You read this!? Good boy/girl.';
-$git->command( 'add', '.' );
-do_commit( "add README for release\n\nas everybody knows, releases have to have READMEs" );
+mkdir( File::Spec->catdir($local, 'debian') );
+
+w( File::Spec->catfile( 'debian', 'README' ),
+    'You read this!? Good boy/girl.' );
+$git->command( 'add', 'debian' );
+do_commit( "add README for release\n\nas everybody knows, releases have to have READMEs\nHello, hi!" );
 $git->command( 'tag', '-a', '-m', 'Release 1.0', '1.0-release' );
 push_ok();
 
@@ -255,10 +258,10 @@ $c1 = $commit = $c->describe_commit;
 ok( defined($commit), 'commit 6 present' );
 is( $commit->id, shift @{ $commits{other} } );
 is( $commit->branch, 'other' );
-is( $commit->log, "add README for release\n\nas everybody knows, releases have to have READMEs" );
+is( $commit->log, "add README for release\n\nas everybody knows, releases have to have READMEs\nHello, hi!" );
 is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
-is( $commit->changes->[0]->as_string, '(A)README' );
+is( $commit->changes->[0]->as_string, '(A)debian/README' );
 
 $tagged = $commit->id;
 
@@ -268,12 +271,10 @@ is( $commit->branch, 'tags' );
 is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->changes->[0]->as_string, '(A)1.0-release' );
-is( $commit->log, "Release 1.0\ntagged commit: $tagged" );
+is( $commit->log, "Release 1.0 (tagged commit: $tagged)" );
 
-is_irc_output("#test test ser other ".$c1->id." README | add README for release
-#test test ser tags ".$c2->id." 1.0-release
-#test test Release 1.0
-#test test tagged commit: ".$c1->id."
+is_irc_output("#test ser other ".$c1->id." debian/README * add README for release
+#test ser tags ".$c2->id." 1.0-release * Release 1.0 (tagged commit: ".$c1->id.")
 ");
 
 # a hollow branch
@@ -289,7 +290,7 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 0 );
 is( $commit->log, "branch created" );
 
-is_irc_output("#test test ser hollow ".$commit->id." | branch created\n");
+is_irc_output("#test ser hollow ".$commit->id." * branch created\n");
 
 # some UTF-8
 w 'README', 'You dont read this!? Bad!';
@@ -304,7 +305,7 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->log, "update readme with an über cléver cómmít with cyrillics: привет" );
 
-is_irc_output("#test test ser other ".$commit->id." README | update readme with an über cléver cómmít with cyrillics: привет\n");
+is_irc_output("#test ser other ".$commit->id." README * update readme with an über cléver cómmít with cyrillics: привет\n");
 
 # parent-less branch
     write_tmp 'reflog', '';
@@ -320,7 +321,7 @@ ok( defined($commit), 'empty branch creation commit exists' );
 is( $commit->branch, 'allnew' );
 is( $commit->log, "created empty branch allnew" );
 
-is_irc_output("#test test ser allnew ".$commit->id." | created empty branch allnew\n");
+is_irc_output("#test ser allnew ".$commit->id." * created empty branch allnew\n");
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
@@ -339,8 +340,24 @@ ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
 
-is_irc_output("#test test ser master ".$c1->id." | created empty branch allnew
-#test test ser master ".$c2->id." | Merge branch 'allnew'\n");
+is_irc_output("#test ser master ".$c1->id." * created empty branch allnew
+#test ser master ".$c2->id." * Merge branch 'allnew'\n");
+
+$git->command( checkout => 'other' );
+mkdir( File::Spec->catdir( $local, 'debian', 'patches' ) );
+
+w( File::Spec->catfile( 'debian', 'patches', 'series' ), 'some.patch' );
+w( File::Spec->catfile( 'debian', 'patches', 'some.patch' ), 'This is a patch' );
+
+$git->command( add => 'debian' );
+$git->command( commit => -m => 'A change in two files' );
+push_ok();
+
+$commit = $c->describe_commit;
+
+is_irc_output( "#test ser other "
+        . $commit->id
+        . " debian/patches/ series some.patch * A change in two files\n" );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;

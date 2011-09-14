@@ -22,6 +22,8 @@ package App::KGB::Change;
 use strict;
 use warnings;
 
+use File::Basename qw(dirname);
+
 =head1 NAME
 
 App::KGB::Change - a single file change
@@ -151,6 +153,88 @@ sub as_string {
     $p =~ s,^/,,;    # strip leading slash from paths
     $text .= $p;
     return $text;
+}
+
+=back
+
+=head1 CLASS METHODS
+
+=over
+
+=item detect_common_dir(C<changes>)
+
+Given an arrayref of changes (instances of APP::KGB::Change), detects the
+longest path that is common to all of them. All the changes' paths are trimmed
+from the common part.
+
+Example:
+
+ foo/b
+ foo/x
+ foo/bar/a
+
+would return 'foo' and the paths would be trimmed to
+
+ b
+ x
+ bar/a
+
+=cut
+
+sub detect_common_dir {
+    my $self = shift;
+    my $changes = shift;
+
+    return '' if @$changes < 2;    # common dir concept only meaningful for
+                                   # more than one path
+
+    my %dirs;
+    my %most_dirs;
+    for my $c (@$changes) {
+        my $path = $c->path;
+
+        # we need to pretend the paths are absolute, because otherwise
+        # paths like "a" and "." will be treated as being of the same
+        # deepness, while "." is really the parent of "a"
+        # the leading "/" is stripped before further processing
+        $path = "/$path" unless $path =~ m{^/};
+        my $dir = dirname($path);
+        $dirs{$dir}++;
+        while (1) {
+            $most_dirs{$dir}++;
+            my $ndir = dirname($dir);
+            last if $ndir eq $dir;    # reached the root?
+            $dir = $ndir;
+        }
+    }
+
+    my $topdir = '';
+    my $max    = 0;
+
+    # we want to print the common root of all the changed files and say
+    # "foo/bar (42 files changed)"
+
+    for my $dirpath ( keys %most_dirs ) {
+        if (   $max <= $most_dirs{$dirpath}
+            or $max == $most_dirs{$dirpath}
+            and length($topdir) < length($dirpath) )
+        {
+            $max    = $most_dirs{$dirpath};
+            $topdir = $dirpath;
+        }
+    }
+
+    # remove the artificial leading slash
+    $topdir =~ s{^/}{};
+
+    for (@$changes) {
+        my $p = $_->path;
+        $p =~ s{^/$topdir/?}{}x
+            or $p =~ s{^$topdir/?}{};
+        $_->path($p);
+    }
+
+    return $topdir;
 }
 
 =back

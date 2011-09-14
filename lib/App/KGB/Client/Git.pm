@@ -378,7 +378,14 @@ sub _describe_annotated_tag {
     $self->_git->command_close_pipe( $fh, $ctx );
 
     pop @log if $log[$#log] eq '';
-    push @log, "tagged commit: $commit" if $commit;
+    if ($commit) {
+        push @log, "tagged commit: $commit";
+        if ( scalar(@log) == 2 ) {
+            # spare an extra line
+            $log[0] .= " ($log[1])";
+            $#log = 0;
+        }
+    }
 
     return App::KGB::Commit->new(
         {   id     => substr( $ref, 0, 7 ),

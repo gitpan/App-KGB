@@ -30,3 +30,4 @@ servers:
    timeout: 5 # no point in waiting longer for localhost
  - uri: http://remotehost:9999/
    password: "overrides the global one"
+status-dir: /var/cache/kgb/client-status

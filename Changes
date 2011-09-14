@@ -1,4 +1,26 @@
-1.14:
+1.15 (2011-09-14)
+ * Client:
+   + make File::Touch usage optional, used only when status_dir is present
+   + use single line note for annotated tags
+   + document --status-dir
+   + consistent POD formatting
+   + POD fix for --single-line-commits in synopsis
+ * Server:
+   + fix single line commits with multi-line explaination
+   + move detect_common_dir to App::KGB::Change (as a class method)
+   + no bold revision by default
+   + drop (bold) repository name from the notification
+ * Misc:
+   + fix eg/run-test-bot-dump
+   + My::Builder: make the 'orig' target also provide a (hardlinked)
+     distribution archive
+ * Tests:
+   + initially trim the dump file only if existing
+   + fix single line notification separator
+   + tags are single line too
+   + add tests for decect_common_dir
+   + more extensive tests for debian/patches series some.patch (still passing)
+1.14 (2011-08-24)
   * Client:
    + pass the client instance to the server ref
    + add an option to keep the last used server in a directory
@@ -14,39 +36,39 @@
    + provide examples for running two test bots
    + provide test client configuration
    + use sample test client config in tests
-1.13:
+1.13 (2011-08-13)
   * bot: add --simulate option
   * remove dead code
   * run-test-bot passes arguments to kgb-bot
   * change the port of the test bot
   * silence more git jabber during tests
   * add tests for simulated IRC output
-1.12:
+1.12 (2011-08-13)
   * Updated META.*
-1.11:
+1.11 (no public release)
   * test creation of brand new, orphan branch
   * fix: no warnings when commits have no author
   * bot: log repository on authentication failure
   * put tag name in changes for plain tags too
   * bot: always decode parameters
-1.10:
+1.10 (2011-08-11)
   [ Daman Ivanov ]
   * disable indexing of privinc/
   * fix a couple of cases of conrdirtional declaration
   * add a Perl::Critic test for conditional declarations
   * bot: do not answer back if no answers are configured
   * rate-lmit autoresponses
-1.09:
+1.09 (no official release)
   [ Damyan Ivanov ]
   * Skip some tests when required SVN::* or Git modules are unavailable
   * Fix dist_name from App::KGB to App-KGB
-1.08:
+1.08 (2011-08-05)
   [ Damyan Ivanov ]
   * Fix version disparity between App::KGB and kgb-bot
-1.07:
+1.07 (2011-07-26)
   [ Damyan Ivanov ]
   * Client::Git: use --format=raw when describing annotated tags
-1.06:
+1.06 (2010-12-04)
   [ gregor herrmann ]
   * kgb-bot:
     - fix typo when accessing global config
@@ -61,7 +83,7 @@
   * MANIFEST.SKIP: add MYMETA.yml
   * fix typo in Client::Subversion POD
 
-1.05:
+1.05 (2010-09-10)
   * kgb-bot: use File::Which to find polygen binary; split out the
     polygen-finding function; closes: #593631
   * kgb-bot: check existence of polygen binary before using it;
@@ -71,35 +93,35 @@
   * any problems in finding polygen binary are logged only when debug is
     enabled as a counter-measure against remotely-assisted log abuse
 
-1.04:
+1.04 (2010-08-03)
   * use Digest::SHA from core instead of ::SHA1
   * remove references to Svn::* from Build.PL
     Closes: #582739 (by working around #589812)
 
-1.03:
+1.03 (2010-04-28)
   * Synchronized versions of kgb-bot and KGB
 
-1.02:
+1.02 (no official release)
   * Protocol v2
     + Adds a new parameter, revision prefix, which is printed plain before the
       bold commit ID
     + The default revision prefix is empty ('')
     + Subversion revision prefix is 'r'
 
-1.01:
+1.01 (2009-12-05)
   * Client: drop branch/module detection if not all changed paths are in the
     same branch/module
 
-1.00:
+1.00 (2009-12-02)
   * ServerRef: send commit_id as a string
   * Commit: decode UTF-8 log messages
   * ServerRef: encode all strings before sending
 
-0.16:
+0.16 (2009-11-24)
   * bot:
     + print the path information part along the author and revision
 
-0.15
+0.15 (2009-11-07)
   * bot:
     + bump years of copyright
     + make manual page speak about 'kgb-bot', not 'KGB'
@@ -114,17 +136,17 @@
     + support sending test commits to a live running bot when
       TEST_KGB_BOT_RUNNING is in the environment
 
-0.14
+0.14 (2009-11-02)
   * Git: fix describing merge commits
   * bot: replace change flags (A+)... with colors
   * bot: avoid sending changed files list for commits that don't
     contain changed files
   * bot: always detect common changes directory
 
-0.13
+0.13 (2009-11-01)
   * kgb-bot: fix the code detecting common root for all changes
 
-0.12
+0.12 (2009-10-31)
   * add a test ensuring that App::KGB and kgb-bot are the same version
   * client
     + honor branch and module supplied by commit
@@ -137,15 +159,15 @@
       - special handling of signed/annotated tags
       - use raw commit logs to detect file additions/removals
 
-0.11
+0.11 (2009-10-26)
   * move generation of a smart answers to a subroutine
   * make the autoresponder use polygen
   * fix typo in an error message
 
-0.10
+0.10 (2009-10-25)
   * kgb-bot has its own version. no longer pulls the client via App::KGB
 
-0.09
+0.09 (2009-10-24)
   * print unhandled IRC stuff only when debugging is enabled
   * implement logging
   * drop auto-rejoin TODO item (sort of done)

@@ -38,7 +38,8 @@ kgb-client - relay commits to KGB servers
                     --password I<password>
                     --repo-id I<repository>
                     --timeout I<timeout-in-seconds>
-                    --single-line-commits <off|forced|auto>
+                    --single-line-commits I<off|forced|auto>
+                    --status-dir I<directory>
 
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
 
@@ -120,7 +121,7 @@ as describing an extra server to the servers described in B<servers> array.
 The B<password> and B<timeout> options default too the top-level options of the
 same name.
 
-=item single-line-commits I<off|forced|auto>
+=item B<single-line-commits> I<off|forced|auto>
 
 Request different modes of commit message processing:
 
@@ -132,17 +133,23 @@ No processing is done. The commit message is printed as was given, with each
 line in a separate IRC message, blank lines omitted. This is the only possible
 behaviour in versions before 1.14.
 
-=item forced
+=item I<forced>
 
 Only the first line is sent to IRC, regardles of whether it is followed by a
 blank line or not.
 
-=item auto
+=item I<auto>
 
 If the first line is followed by an empty line, only the first line is sent to
 IRC and the rest is ignored. This is the default since version 1.14.
 
 =back
+
+=item B<status-dir> I<directory>
+
+With this option, B<kgb-client> tries to contact the last server that was
+successfuly contacted first. The directory is used to store the information
+about the last contacted server.
 
 =item B<verbose>
 

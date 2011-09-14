@@ -30,6 +30,7 @@ script/kgb-client
 t/00-compile.t
 t/00-compile_scripts.t
 t/00-compile_shell_scripts.t
+t/30-bot-changes.t
 t/50-client.t
 t/51-client_branch_module.t
 t/52-client-git.t

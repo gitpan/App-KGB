@@ -2,4 +2,4 @@
 
 set -e
 
-exec eg/run-test-bot --simulate dump
+exec eg/run-test-bot-1 --simulate dump

@@ -104,20 +104,20 @@ server.
 If you can only provide the module name in the first capture and the branch
 name in the second, use this option to signal the fact to B<kgb-client>.
 
-=item ignore_branch
+=item B<ignore_branch>
 
 When most of the development is in one branch, transmitting it to the KGB
 server and seeing it on ORC all the time can be annoing. Therefore, if you
 define B<ignore_branch>, and a given commit is in a branch with that name, the
 branch name is not transmitted to the server. Module name is still transmitted.
 
-=item module
+=item B<module>
 
 Forces explicit module name, overriding the branch and module detection. Useful
 in Git-hosted sub-projects that want to share single configuration file, but
 still want module indication in notifications.
 
-=item single_line_commits I<off|forced|auto>
+=item B<single_line_commits> I<off|forced|auto>
 
 Request different modes of commit message processing:
 
@@ -129,19 +129,19 @@ No processing is done. The commit message is printed as was given, with each
 line in a separate IRC message, blank lines omitted. This is the only possible
 behaviour in versions before 1.14.
 
-=item forced
+=item I<forced>
 
 Only the first line is sent to IRC, regardles of whether it is followed by a
 blank line or not.
 
-=item auto
+=item I<auto>
 
 If the first line is followed by an empty line, only the first line is sent to
 IRC and the rest is ignored. This is the default since version 1.14.
 
 =back
 
-=item status_dir
+=item B<status_dir>
 
 Specifies a directory to store information about the last server contacted
 successfuly. The client would touch files in that directory after successful
@@ -152,7 +152,7 @@ most recently contacted server. If that was contacted too far in the past, the
 information in the directory is ignored and a random server is picked, as
 usual.
 
-=item verbose
+=item B<verbose>
 
 Print diagnostic information.
 
@@ -165,7 +165,6 @@ use Carp qw(confess);
 use Digest::MD5 qw(md5_hex);
 use Digest::SHA qw(sha1_hex);
 use DirHandle ();
-use File::Touch qw(touch);
 use SOAP::Lite;
 use Getopt::Long;
 use List::Util ();
@@ -424,12 +423,16 @@ sub process_commit {
         $failure = eval {
             $srv->send_changes( $self, $commit, $branch, $module );
             $self->_last_server($srv);
-            touch(
-                File::Spec->catfile(
-                    $self->status_dir,
-                    sprintf( "kgb-client.%s", md5_hex( $srv->uri ) )
-                )
-            ) if $self->status_dir;
+
+            if ( $self->status_dir ) {
+                require File::Touch;
+                File::Touch::touch(
+                    File::Spec->catfile(
+                        $self->status_dir,
+                        sprintf( "kgb-client.%s", md5_hex( $srv->uri ) )
+                    )
+                );
+            }
             0;
         } // 1;
 
