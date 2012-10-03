@@ -1,3 +1,27 @@
+1.16 (2012-10-03)
+ * Misc
+   + Typos in documentation fixed
+ * Server
+   + indicate replacement using 'brown' (which should be displayed as low
+     intensity red or something) instead of inverse
+   + add script to add simple projects quickly
+   + call $poe_kernel->has_forked in the child process
+     Makes the reload action of the bot work (Closes: #689018)
+   + reopen logs on reload
+   + create log file in the init script, not in postinst
+   + init script: depend on $network facility and add status option.
+   + init script: add pidfile argument to status option
+   + add bot reload to logrotate configuration
+ * Client
+   + honour 'repository' setting in kgb-client.conf (Closes: 688992)
+   + fix forced single-line commit mode. reported by joeyh, fix by dondelelcaro
+ * Both
+   + Add support for plain web links. No URL shortening yet
+   + Protocol v3 (used by client when extra parameters, e.g. web link need to
+     be sent)
+   + Add CVS support (Closes: #689288) (Mostly in the client, but server needed
+     some changes to drop assumptions that commits always have IDs)
+
 1.15 (2011-09-14)
  * Client:
    + make File::Touch usage optional, used only when status_dir is present

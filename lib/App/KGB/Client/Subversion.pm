@@ -60,7 +60,7 @@ App:KGB::Client::Subversion defines two additional fields:
 
 =item B<repo_path> (B<mandatory>)
 
-Phisical path to Subversion repository.
+Physical path to Subversion repository.
 
 =item B<revision>
 

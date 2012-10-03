@@ -6,7 +6,7 @@ require v5.10.0;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009,2010,2011 Damyan Ivanov
+# Copyright © 2009,2010,2011,2012 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -107,7 +107,7 @@ name in the second, use this option to signal the fact to B<kgb-client>.
 =item B<ignore_branch>
 
 When most of the development is in one branch, transmitting it to the KGB
-server and seeing it on ORC all the time can be annoing. Therefore, if you
+server and seeing it on IRC all the time can be annoing. Therefore, if you
 define B<ignore_branch>, and a given commit is in a branch with that name, the
 branch name is not transmitted to the server. Module name is still transmitted.
 
@@ -156,6 +156,20 @@ usual.
 
 Print diagnostic information.
 
+=item B<web_link> I<string>
+
+A web link string to be sent to the server. The folowing items are expanded:
+
+=over
+
+=item ${branch}
+
+=item ${module}
+
+=item ${commit}
+
+=back
+
 =back
 
 =cut
@@ -171,7 +185,7 @@ use List::Util ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
     qw( repo_id servers br_mod_re br_mod_re_swap module ignore_branch
-        single_line_commits status_dir verbose _last_server )
+        single_line_commits status_dir verbose web_link _last_server )
 );
 
 =head1 CONSTRUCTOR
@@ -227,9 +241,6 @@ sub new {
 Given a set of changes (an arrayref of L<App::KGB::Change> objects), runs all
 the regular expressions as listed in B<br_mod_re> and if a regular expression
 that matches all the changed paths and returns the branch and module.
-
-In case the module detected is the same as B<ignore_module>, C<undef> is
-returned for module.
 
     ( $branch, $module ) = $client->detect_branch_and_module($changes);
 
@@ -389,10 +400,48 @@ sub shuffle_servers {
     return @servers;
 }
 
+=item expand_link ($string, \%data)
+
+Expands items in the form I<${item}> in I<$string>, using the data in the
+supplied hash reference.
+
+Passing
+
+ "http://git/${module}.git?commit=${commit}",
+ { module => 'dh-make-perl', commit => '225ceca' }
+
+would result in C<http://git/dh-make-perl.git?commit=225ceca>.
+
+=cut
+
+sub expand_link {
+    my ( $self, $input, $data ) = @_;
+
+    my $output = '';
+    my $re = qr/\$\{([^{}]+)\}/p;
+
+    while ( $input =~ $re ) {
+        my $f = $1;
+        my $v;
+        if ( exists $data->{$f} ) {
+            $v = $data->{$f} // '';
+        }
+        else {
+            $v = '';
+            warn "Unknown substitution '$f'\n";
+        }
+
+        $output .= ${^PREMATCH} . $v;
+        $input = ${^POSTMATCH};
+    }
+
+    return $output;
+}
+
 =item process_commit ($commit)
 
 Processes a single commit, trying to send the changes summary to each of the
-servers, defined inn B<servers>, until some server is successfuly notified.
+servers, defined in B<servers>, until some server is successfuly notified.
 
 =cut
 
@@ -412,6 +461,12 @@ sub process_commit {
         $module //= $det_module;
     }
 
+    my $web_link = $self->web_link;
+    $web_link
+        = $self->expand_link( $web_link,
+        { branch => $branch, module => $module, commit => $commit->id } )
+        if defined($web_link);
+
     $branch = undef
         if $branch and $branch eq ( $self->ignore_branch // '' );
 
@@ -421,7 +476,9 @@ sub process_commit {
     my $failure;
     for my $srv (@servers) {
         $failure = eval {
-            $srv->send_changes( $self, $commit, $branch, $module );
+            my @args = ( $commit, $branch, $module );
+            push @args, { web_link => $web_link } if defined($web_link);
+            $srv->send_changes( $self, @args );
             $self->_last_server($srv);
 
             if ( $self->status_dir ) {

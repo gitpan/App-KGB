@@ -2,7 +2,7 @@
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009,2010 Damyan Ivanov
+# Copyright © 2009,2010,2012 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -23,6 +23,7 @@ use strict;
 use warnings;
 use feature 'switch';
 use Encode;
+use Storable ();
 
 =head1 NAME
 
@@ -38,7 +39,7 @@ App::KGB::Client::ServerRef - server instance in KGB client
         }
     );
 
-    $s->send_changes( $client, $commit, $branch, $module );
+    $s->send_changes( $client, $commit, $branch, $module, { extra => stuff } );
 
 =head1 DESCRIPTION
 
@@ -106,6 +107,10 @@ Message parameters are passed as arguments in the following order:
 
 =item Module
 
+=item Extra
+
+This is a hash reference with additional parameters.
+
 =back
 
 =back
@@ -136,7 +141,7 @@ sub new {
 }
 
 sub send_changes {
-    my ( $self, $client, $commit, $branch, $module ) = @_;
+    my ( $self, $client, $commit, $branch, $module, $extra ) = @_;
 
     my $s = SOAP::Lite->new( uri => $self->uri, proxy => $self->proxy );
     $s->transport->proxy->timeout( $self->timeout // 15 );
@@ -151,7 +156,7 @@ sub send_changes {
 
     given ( $client->single_line_commits ) {
         when ('off')    { }     # keep it as it is
-        when ('forced') { $commit_log =~ s/\n.*//; }
+        when ('forced') { $commit_log =~ s/\n.*//s; }
         when ('auto')   { $commit_log =~ s/^[^\n]+\K\n\n.*//s; }
     }
 
@@ -168,12 +173,52 @@ sub send_changes {
             utf8::upgrade($_);
         }
     }
-    # v1 protocol (well, we use '2', but the auth hash is the same as in v1)
-    my $message = join("", $repo_id, $commit_id,
-        map( "$_", @commit_changes ), $commit_log, $commit_author // (),
-        $branch // (), $module // (), $password );
-    utf8::encode($message);
-    my $checksum = sha1_hex($message);
+
+    my $protocol_ver;
+    my @message;
+    my $checksum;
+
+    if ( defined($extra) ) {
+        # extra parameters require protocol 3
+        my $serialized = Storable::nfreeze(
+            {   rev_prefix    => $client->rev_prefix,
+                commit_id     => $commit_id,
+                changes       => \@commit_changes,
+                commit_log    => $commit_log,
+                author        => $commit_author,
+                branch        => $branch,
+                module        => $module,
+                extra         => $extra,
+            }
+        );
+        @message = (
+            3, $repo_id, $serialized,
+            sha1_hex( $repo_id, $serialized, $password )
+        );
+    }
+    else {
+        my $message = join("", $repo_id, $commit_id // (),
+            map( "$_", @commit_changes ), $commit_log, $commit_author // (),
+            $branch // (), $module // (), $password );
+        utf8::encode($message);
+        $checksum = sha1_hex($message);
+        # SOAP::Transport::HTTP tries to convert all characters to byte sequences,
+        # but fails. See around line 204
+        @message = (
+            2,
+            (   map {
+                    SOAP::Data->type(
+                        string => Encode::encode( 'UTF-8', $_ ) )
+                } ( $repo_id, $checksum, $client->rev_prefix, $commit_id )
+            ),
+            [ map { SOAP::Data->type( string => "$_" ) } @commit_changes ],
+            (   map {
+                    SOAP::Data->type(
+                        string => Encode::encode( 'UTF-8', $_ ) )
+                } ( $commit_log, $commit_author, $branch, $module, )
+            ),
+        );
+    }
 
     if ( $self->verbose ) {
         print "About to contact ", $self->proxy, "\n";
@@ -181,23 +226,7 @@ sub send_changes {
         print "  $_\n" for @commit_changes;
     }
 
-    # SOAP::Transport::HTTP tries to convert all characters to byte sequences,
-    # but fails. See around line 204
-    my $res = $s->commit(
-        [   2,
-            (   map {
-                    SOAP::Data->type(
-                        string => Encode::encode( 'UTF-8', $_ ) )
-                    } ( $repo_id, $checksum, $client->rev_prefix, $commit_id )
-            ),
-            [ map { SOAP::Data->type( string => "$_" ) } @commit_changes ],
-            (   map {
-                    SOAP::Data->type(
-                        string => Encode::encode( 'UTF-8', $_ ) )
-                    } ( $commit_log, $commit_author, $branch, $module )
-            ),
-        ]
-    );
+    my $res = $s->commit( \@message );
 
     if ( $res->fault ) {
         die 'SOAP FAULT while talking to '

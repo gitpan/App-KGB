@@ -25,11 +25,11 @@ use warnings;
 
 =head1 NAME
 
-App::KGB - collabourative IRC helper
+App::KGB - collaborative IRC helper
 
 =cut
 
-our $VERSION = '1.15';
+our $VERSION = '1.16';
 
 =head1 DESCRIPTION
 

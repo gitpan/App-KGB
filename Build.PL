@@ -8,10 +8,13 @@ my $builder = My::Builder->new(
     dist_name   => 'App-KGB',
     dist_version_from => 'lib/App/KGB.pm',
     license        => 'gpl',
+    configure_requires => {
+        'Module::Build'       => '0.38',
+    },
     build_requires => {
         autodie               => 0,
         'Test::Compile'       => 0,
-        'Test::Critic'        => 0,
+        'Test::Perl::Critic'  => 0,
         'Test::Pod::Coverage' => 0,
         'Test::Pod'           => 0,
         'Test::Simple'        => '0.92',
@@ -43,9 +46,12 @@ my $builder = My::Builder->new(
         sbin => '/usr/sbin',
         etc  => 'etc'
     },
-    sbin_files => { 'script/kgb-bot' => 'sbin/kgb-bot' },
+    sbin_files => {
+        'script/kgb-bot'         => 'sbin/kgb-bot',
+        'script/kgb-add-project' => 'sbin/kgb-add-project'
+    },
     etc_files => { 'etc/kgb.conf' => 'etc/kgb-bot/kgb.conf' },
-    script_files => 'script/kgb-client',
+    script_files => [ 'script/kgb-client' ],
     no_index => {
         directory => [ 'privinc' ],
     },

@@ -5,7 +5,7 @@ use utf8;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2008,2009,2010,2011 Damyan Ivanov
+# Copyright © 2008,2009,2010,2011,2012 Damyan Ivanov
 # Copyright © 2010 gregor herrmann
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -65,7 +65,7 @@ use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
 
-our $VERSION = '1.15';
+our $VERSION = '1.16';
 
 use Cwd;
 
@@ -82,6 +82,7 @@ our %supported_protos = (
     "0" => 1,
     "1" => 1,
     "2" => 1,
+    "3" => 1,
 );
 our $progname;
 our $restart      = 0;
@@ -195,12 +196,13 @@ sub read_conf ($) {
     $conf->{colors}{author}     ||= 'green';
     $conf->{colors}{branch}     ||= 'brown';
     $conf->{colors}{module}     ||= 'purple';
+    $conf->{colors}{web}        ||= 'silver';
     $conf->{colors}{separator}  ||= '';
 
     $conf->{colors}{addition}     ||= 'green';
     $conf->{colors}{modification} ||= 'teal';
     $conf->{colors}{deletion}     ||= 'bold red';
-    $conf->{colors}{replacement}  ||= 'reverse';
+    $conf->{colors}{replacement}  ||= 'brown';
 
     $conf->{colors}{prop_change} ||= 'underline';
 
@@ -242,6 +244,21 @@ sub out {
 
 sub debug {
     shift->out(@_) if $KGB::config->{debug};
+}
+
+sub open_log {
+    if ( my $f = $KGB::config->{log_file} ) {
+        open( STDOUT, ">>", $f )
+            or die "Error opening log $f: $!\n";
+        open( STDERR, ">>", $f )
+            or die "Error opening log $f: $!\n";
+    }
+    else {
+        open( STDOUT, ">", "/dev/null" )
+            or die "Error closing stdout: $!\n";
+        open( STDERR, ">", "/dev/null" )
+            or die "Error closing stderr: $!\n";
+    }
 }
 
 package KGB::POE;
@@ -338,6 +355,11 @@ sub reloadhandler {
         return undef;
     }
 
+    # reopen log file
+    # we catch any exceptions, because we don't want reloading to be able
+    # to kill the server
+    warn "Error re-openning logs: $@\n" unless eval { KGB::open_log(); 1 };
+
     # Reload successful
     $kernel->yield("_irc_reconnect");
     undef;
@@ -412,10 +434,16 @@ sub colorize_change {
 }
 
 sub do_commit_msg {
-    my ($kernel,  $response, $repo_id, $rev_prefix, $rev,
-        $changes, $log,      $author,  $branch,     $module
-    ) = @_;
-    my @log = split( /\n+/, $log );
+    my ($kernel, $response, $repo_id, $data) = @_;
+
+    my $rev_prefix = $data->{rev_prefix} // '';
+    my $commit_id = $data->{commit_id};
+    my $changes = $data->{changes};
+    my @log = split( /\n+/, $data->{commit_log} );
+    my $author = $data->{author} // '';
+    my $branch = $data->{branch} // '';
+    my $module = $data->{module} // '';
+
     my $path_string;
     my %dirs;
     my $changed_files   = scalar(@$changes);
@@ -423,7 +451,16 @@ sub do_commit_msg {
 
     $_ = App::KGB::Change->new($_) for @$changes;    # convert to objects
 
-    my $common_dir = App::KGB::Change->detect_common_dir($changes);
+    my $common_dir = App::KGB::Change->detect_common_dir($changes) // '';
+
+    my @info;
+
+    push @info, colorize( author => $author ) if $author ne '';
+    push @info, colorize( branch => $branch ) if $branch ne '';
+    push @info, "$rev_prefix" . colorize( revision => $commit_id )
+        if defined $commit_id;
+    push @info, colorize( module => $module ) if $module ne '';
+    push @info, colorize( path => "$common_dir/" ) if $common_dir ne '';
 
     if ( $changed_files > $MAGIC_MAX_FILES ) {
         my %dirs;
@@ -434,36 +471,32 @@ sub do_commit_msg {
 
         my $dirs = scalar( keys %dirs );
 
-        $path_string = join( ' ',
+        my $path_string = join( ' ',
             ( $dirs > 1 )
             ? sprintf( "(%d files in %d dirs)", $changed_files, $dirs )
             : sprintf( "(%d files)",            $changed_files ) );
 
-        $path_string = colorize( path => $path_string );
+        push @info, colorize( path => $path_string );
     }
     else {
-        $path_string = join( ' ', map { colorize_change($_) } @$changes );
+        push @info, join( ' ', map { colorize_change($_) } @$changes )
+            if @$changes;
     }
 
-    $path_string = join( ' ',
-        ( $common_dir eq '' ) ? () : colorize( path => "$common_dir/" ),
-        ( $path_string eq '' ) ? () : $path_string );
+    my @string = join( ' ', @info );
 
-    my $author_string = join( " ",
-        ( $author ? colorize( author => $author ) : () ),
-        ( $branch ? colorize( branch => $branch ) : () ) );
-    $path_string = colorize( module => $module ) . " $path_string"
-        if defined($module);
-    my @string
-        = "$author_string $rev_prefix"
-        . colorize( revision => $rev )
-        . ( $path_string ? " $path_string" : '' );
+    my $web_string
+        = defined( $data->{extra}{web_link} )
+        ? colorize( web => $data->{extra}{web_link} )
+        : undef;
 
     if ( 1 == @log and length($log[0]) <= 80 ) {
-        $string[0] .= ' '.colorize(separator=>'*').' ' . $log[0];
+        $string[0] .= ' ' . colorize( separator => '*' ) . ' ' . $log[0];
+        $string[0] .= " ($web_string)" if defined($web_string);
     }
     else {
         push @string, @log;
+        push @string, $web_string if defined($web_string);
     }
 
     my @tmp;
@@ -533,8 +566,17 @@ sub do_commit_v0 {
         warn("Invalid password\n");
         return;
     }
-    do_commit_msg( $kernel, $response, $repo_id, 'r', $rev, $paths, $log,
-        $author );
+    do_commit_msg(
+        $kernel,
+        $response,
+        $repo_id,
+        {   rev_prefix => 'r',
+            commit_id  => $rev,
+            changes    => $paths,
+            commit_log => $log,
+            author     => $author
+        }
+    );
 }
 
 sub do_commit_v1 {
@@ -552,7 +594,7 @@ sub do_commit_v1 {
 sub do_commit_v2 {
     my ($kernel,     $response, $repo_id, $checksum,
         $rev_prefix, $rev,      $paths,   $log,
-        $author,     $branch,   $module
+        $author,     $branch,   $module,
     ) = @_;
     unless ( $KGB::config->{repositories}{$repo_id} ) {
         $kernel->post(
@@ -568,7 +610,7 @@ sub do_commit_v2 {
         for ( $repo_id, $rev, @$paths, $log, $author, $branch, $module );
     my $message = join( "",
         $repo_id,
-        $rev,
+        $rev // (),
         @$paths,
         $log,
         ( defined($author) ? $author : () ),
@@ -588,9 +630,59 @@ sub do_commit_v2 {
         return;
     }
     do_commit_msg(
-        $kernel, $response, $repo_id, $rev_prefix, $rev,
-        $paths,  $log,      $author,  $branch,     $module
+        $kernel,
+        $response,
+        $repo_id,
+        {   rev_prefix => $rev_prefix,
+            commit_id  => $rev,
+            changes    => $paths,
+            commit_log => $log,
+            author     => $author,
+            branch     => $branch,
+            module     => $module
+        }
     );
+}
+
+sub do_commit_v3 {
+    my ( $kernel, $response, $repo_id, $serialized, $checksum ) = @_;
+
+    unless ( exists $KGB::config->{repositories}{$repo_id} ) {
+        $kernel->post(
+            SOAPServer => 'FAULT',
+            $response, 'Client.Arguments',
+            "Repository $repo_id is unknown"
+        );
+        warn("Unknown repository ($repo_id)\n");
+
+        return;
+    }
+
+    my $pwd = $KGB::config->{repositories}{$repo_id}{password};
+    if ( not defined($pwd)
+        or sha1_hex( $repo_id, $serialized, $pwd ) ne $checksum )
+    {
+        $kernel->post(
+            SOAPServer => 'FAULT',
+            $response, 'Client.Arguments',
+            "Authentication failed for repository $repo_id"
+        );
+        warn("Authentication failed for repository $repo_id\n");
+        return;
+    }
+
+    my $data;
+    my $ok = eval { $data = Storable::thaw($serialized); 1 };
+    unless ($ok) {
+        $kernel->post(
+            SOAPServer => 'FAULT',
+            $response, 'Client.Arguments',
+            "Invalid serialized data"
+        );
+        return;
+    }
+
+    do_commit_msg( $kernel, $response, $repo_id, $data );
 }
 
 sub commit {
@@ -646,6 +738,7 @@ sub commit {
         KGB->debug("Rate limit enforced\n");
         return;
     }
+
     if ( $proto_ver == 0 ) {
         return do_commit_v0( $kernel, $response, @{ $params->{Array} } );
     }
@@ -654,6 +747,9 @@ sub commit {
     }
     if ( $proto_ver == 2 ) {
         return do_commit_v2( $kernel, $response, @{ $params->{Array} } );
+    }
+    if ( $proto_ver == 3 ) {
+        return do_commit_v3( $kernel, $response, @{ $params->{Array} } );
     }
     $kernel->post(
         SOAPServer => 'FAULT',
@@ -1068,6 +1164,9 @@ unless ($foreground) {
             die $r;
         }
     }
+    else {
+        $poe_kernel->has_forked;
+    }
     close IN;
     eval {
         die "Already running\n"
@@ -1083,18 +1182,7 @@ unless ($foreground) {
 
         open( STDIN, "<", "/dev/null" ) or die "Error closing stdin: $!\n";
 
-        if ( $KGB::config->{log_file} ) {
-            open( STDOUT, ">>", $KGB::config->{log_file} )
-                or die "Error opening log: $!\n";
-            open( STDERR, ">>", $KGB::config->{log_file} )
-                or die "Error opening log: $!\n";
-        }
-        else {
-            open( STDOUT, ">", "/dev/null" )
-                or die "Error closing stdout: $!\n";
-            open( STDERR, ">", "/dev/null" )
-                or die "Error closing stderr: $!\n";
-        }
+        KGB::open_log();
     };
     if ($@) {
         print OUT $@;

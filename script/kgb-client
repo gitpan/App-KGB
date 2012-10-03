@@ -5,7 +5,7 @@ require v5.10.0;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009, 2011 Damyan Ivanov
+# Copyright © 2009, 2011, 2012 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -44,6 +44,8 @@ kgb-client - relay commits to KGB servers
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
 
 =item B<kgb-client> I<option>... I<old-rev> I<new-rev> I<ref-name>
+
+=item B<kgb-client> I<option>... $CVSROOT "%p"
 
 =back
 
@@ -155,6 +157,37 @@ about the last contacted server.
 
 Makes the whole process more verbose.
 
+=item B<web-link> I<string>
+
+Passes a web link to the server, who would make it appear in the notification.
+The following items in I<string> are expanded before sending.
+
+=over
+
+=item ${branch}
+
+The branch of the commit, as determined by the I<branch-and-module-re> regular
+expressions, see L<Branches and modules>.
+
+=item ${module}
+
+The module as determined by the I<branch-and-module-re> regular expressions,
+see L<Branches and modules>.
+
+=item ${commit}
+
+The commit ID (revision number for Subversion, short commit hash for Git).
+
+=back
+
+Examples:
+
+ http://git.debian.org/?p=pkg-firebird/2.5.git;a=commitdiff;h=${commit}
+
+ http://git.debian.org/?p=pkg-perl/packages/${module}.git;a=commitdiff;h=${commit}
+
+ http://svn.debian.org/viewvc/kgb?view=revision&revision=${commit}
+
 =back
 
 =head2 Branches and modules
@@ -247,6 +280,16 @@ input as any standard Git post-receive hook.
 There are other ways to give kgb-client information about Git reflog, mostly
 useful when debugging on in unusual situations. See L<App::KGB::Client::Git>.
 
+=head2 CVS
+
+B<kgb-client> shall be installed in the F<loginfo> file under CVSROOT in the
+CVS repository. It shall be given two arguments -- the repository root, and the
+directory in which the changes are being made.
+
+For example:
+
+    ALL /path/to/kgb-client --repo cvs ... "$CVSROOT" "%p"
+
 =head1 SEE ALSO
 
 =over
@@ -256,6 +299,8 @@ useful when debugging on in unusual situations. See L<App::KGB::Client::Git>.
 =item L<App::KGB::Client::Subversion>
 
 =item L<App::KGB::Client::Git>
+
+=item L<App::KGB::Client::CVS>
 
 =back
 
@@ -270,7 +315,7 @@ my ($conf_file,      $uri,        $proxy,
     $verbose,        $repo_type,  @br_mod_re,
     $br_mod_re_swap, $module,     $ignore_branch,
     @servers,        $git_reflog, $single_line_commits,
-    $status_dir,
+    $status_dir,     $web_link,
 );
 GetOptions(
     'conf=s'                     => \$conf_file,
@@ -290,6 +335,7 @@ GetOptions(
     'git-reflog=s'               => \$git_reflog,
     'single-line-commits=s'      => \$single_line_commits,
     'status-dir=s'               => \$status_dir,
+    'web-link=s'                 => \$web_link,
 ) or exit 1;
 
 if( $conf_file )
@@ -307,8 +353,10 @@ if( $conf_file )
     $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
     $ignore_branch //= $conf->{'ignore-branch'};
     $module //= $conf->{module};
+    $repo_type //= $conf->{repository};
     $single_line_commits //= $conf->{'single-line-commits'};
     $status_dir //= $conf->{'status-dir'};
+    $web_link //= $conf->{'web-link'};
 
     @servers = map {
         App::KGB::Client::ServerRef->new(
@@ -331,7 +379,7 @@ push @servers,
     }
     ) if $uri;
 
-die "no servers difined. use 'uri' or 'servers' configuration options\n"
+die "no servers defined. use 'uri' or 'servers' configuration options\n"
     unless @servers;
 
 die "repo-id not given\n" unless $repo_id;
@@ -352,6 +400,7 @@ my @client_args = (
     verbose             => $verbose,
     single_line_commits => $single_line_commits,
     status_dir          => $status_dir,
+    web_link            => $web_link,
 );
 
 $repo_type||= 'svn';
@@ -392,6 +441,28 @@ elsif ( $repo_type eq 'git' ) {
 
     $client->process();
 
+}
+elsif ( $repo_type eq 'cvs' ) {
+    print "Processing CVS commit\n"
+        if $verbose;
+
+    eval { require App::KGB::Client::CVS; 1; }
+        or die "CVS support unavailable\n"
+        . "Error loading App::KGB::Client::CVS:\n"
+        . $@;
+
+    my $cvs_root = shift(@ARGV);
+    my $dir = shift(@ARGV);
+    my $client = App::KGB::Client::CVS->new(
+        {   @client_args,
+            cvs_root  => $cvs_root,
+            author    => $ENV{USER},
+            directory => $dir,
+            files     => [@ARGV],
+        }
+    );
+
+    $client->process();
 }
 else {
     die "Repository type '$repo_type' not supported\n";

@@ -48,9 +48,9 @@ a branch and a module.
 
 =over
 
-=item B<id> (B<mandatory>)
+=item B<id>
 
-The commit ID that uniquely identifies it in the repository.
+The commit ID that uniquely identifies it in the repository (if applicable).
 
 =item B<changes>
 
@@ -86,8 +86,6 @@ sub new {
     my $class = shift;
     my $self  = $class->SUPER::new(@_);
 
-    defined( $self->id )
-        or confess "'id' is required";
     not defined( $self->changes )
         or ref( $self->changes ) and ref( $self->changes ) eq 'ARRAY'
         or confess "'changes' must be an arrayref";
