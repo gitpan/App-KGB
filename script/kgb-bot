@@ -71,7 +71,7 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.20';
+our $VERSION = '1.21';
 
 use Cwd;
 
@@ -527,7 +527,7 @@ sub do_commit_msg {
     push @channels, @{ $KGB::config->{broadcast_channels} }
         unless $repo->{private};
 
-    throw Error::Simple("Repository $repo_id has no associated channels.")
+    throw Error::Simple("Repository $repo_id has no associated channels.\n")
         unless (@channels);
 
     my $path_string;
@@ -627,10 +627,10 @@ sub do_commit_v0 {
     my ( $kernel, $repo_id, $passwd, $rev, $paths, $log, $author )
         = @_;
 
-    throw Error::Simple("Unknown repository '$repo_id'")
+    throw Error::Simple("Unknown repository '$repo_id'\n")
         unless $KGB::config->{repositories}{$repo_id};
 
-    throw Error::Simple("Invalid password for repository $repo_id")
+    throw Error::Simple("Invalid password for repository $repo_id\n")
         if $KGB::config->{repositories}{$repo_id}{password}
         and $KGB::config->{repositories}{$repo_id}{password} ne $passwd;
 
@@ -664,7 +664,7 @@ sub do_commit_v2 {
         $author,     $branch,   $module,
     ) = @_;
 
-    throw Error::Simple("Repository $repo_id is unknown")
+    throw Error::Simple("Repository $repo_id is unknown\n")
         unless $KGB::config->{repositories}{$repo_id};
 
     # Protocol v2 always uses UTF-8
@@ -681,7 +681,7 @@ sub do_commit_v2 {
         $KGB::config->{repositories}{$repo_id}{password} );
     utf8::encode($message);    # Convert to byte-sequence
 
-    throw Error::Simple("Authentication failed for repository $repo_id")
+    throw Error::Simple("Authentication failed for repository $repo_id\n")
         if $KGB::config->{repositories}{$repo_id}{password}
         and sha1_hex($message) ne $checksum;
 
@@ -702,18 +702,18 @@ sub do_commit_v2 {
 sub do_commit_v3 {
     my ( $kernel, $repo_id, $serialized, $checksum ) = @_;
 
-    throw Error::Simple("Repository $repo_id is unknown")
+    throw Error::Simple("Repository $repo_id is unknown\n")
         unless exists $KGB::config->{repositories}{$repo_id};
 
     my $pwd = $KGB::config->{repositories}{$repo_id}{password};
-    throw Error::Simple("Authentication failed for repository $repo_id")
+    throw Error::Simple("Authentication failed for repository $repo_id\n")
         if not defined($pwd)
         or sha1_hex( $repo_id, $serialized, $pwd ) ne $checksum;
 
     my $data;
     my $ok = eval { $data = Storable::thaw($serialized); 1 };
 
-    throw Error::Simple("Invalid serialized data")
+    throw Error::Simple("Invalid serialized data\n")
         unless $ok;
 
     do_commit_msg( $kernel, $repo_id, $data );
@@ -727,6 +727,9 @@ sub commit {
     my $result;
     try {
         $result = do_commit( $kernel, $params );
+
+        $response->content("OK");
+        $kernel->post( SOAPServer => 'DONE', $response );
     }
     catch Error::Simple with {
         my $E = shift;
@@ -736,7 +739,6 @@ sub commit {
             $response, 'Client.Arguments',
             "$E",
         );
-        return;
     }
     otherwise {
         my $E = shift;
@@ -746,11 +748,7 @@ sub commit {
             $response, 'Server.Code',
             'Internal Server Error'
         );
-        return;
     };
-
-    $response->content("OK");
-    $kernel->post( SOAPServer => 'DONE', $response );
 }
 
 sub do_commit {
@@ -758,7 +756,7 @@ sub do_commit {
 
     KGB->out( "commit: " . YAML::Dump($params) ) if ( $KGB::config->{debug} );
 
-    throw Error::Simple('commit(params ...)')
+    throw Error::Simple("commit(params ...)\n")
         unless ref $params
         and ref $params eq "HASH"
         and $params->{Array}
@@ -775,14 +773,14 @@ sub do_commit {
 
     throw Error::Simple(
         sprintf(
-            "Protocol version %s not welcomed", $proto_ver // '<undef>'
+            "Protocol version %s not welcomed\n", $proto_ver // '<undef>'
         )
         )
         unless defined($proto_ver)
         and $KGB::supported_protos{$proto_ver}
         and $proto_ver >= $KGB::config->{min_protocol_ver};
 
-    throw Error::Simple('Rate limit enforced')
+    throw Error::Simple("Rate limit enforced\n")
         if $KGB::config->{queue_limit}
         and $KGB::IRC::irc_object
         and $KGB::config->{queue_limit} < $KGB::IRC::irc_object->send_queue;
@@ -799,7 +797,7 @@ sub do_commit {
     if ( $proto_ver == 3 ) {
         return do_commit_v3( $kernel, @{ $params->{Array} } );
     }
-    throw Error::Simple("Invalid protocol version ($proto_ver)");
+    throw Error::Simple("Invalid protocol version ($proto_ver)\n");
 }
 
 package KGB::IRC;
@@ -1175,8 +1173,8 @@ sub http_error {
     my ( $resp, $error, $code ) = @_;
     KGB->out($error);
     $resp->code($code // 400);
-    $resp->message('Invalid request');
-    $resp->content($error);
+    $resp->message($error);
+    $resp->content('');
 }
 
 sub json_request {

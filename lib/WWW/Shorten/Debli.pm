@@ -49,7 +49,7 @@ sub makeashorterlink {
         = $rpc->call( $RPC_URL => { method => 'add_url', params => [$url] } );
     return undef unless $res;
     return undef if $res->is_error;
-    return $res->result;
+    return 'http://deb.li/' . $res->result;
 }
 
 =item makealongerlink

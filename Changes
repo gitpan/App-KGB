@@ -1,4 +1,9 @@
-1.20 (UNRELEASED)
+1.21 (2012-10-11)
+ * Server:
+  + fix exception handling
+  + better error messages
+ * Debli: prepend 'http://deb.li/' to the returned key
+1.20 (2012-10-11)
  * kgb-add-project: avoid using 'keys($hashref)' which requires too recent perl
  * Client:
    + add --reposotory to synopsis
