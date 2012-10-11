@@ -37,8 +37,11 @@ kgb-client - relay commits to KGB servers
 =item B<kgb-client> --uri I<http://some.server:port/service>
                     --password I<password>
                     --repo-id I<repository>
+                    --repository I<svn|git|cvs>
                     --timeout I<timeout-in-seconds>
                     --single-line-commits I<off|forced|auto>
+                    --web-link I<template>
+                    --short-url-service I<service>
                     --status-dir I<directory>
 
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
@@ -47,15 +50,23 @@ kgb-client - relay commits to KGB servers
 
 =item B<kgb-client> I<option>... $CVSROOT "%p"
 
+=item B<kgb-client> I<option>... --fake
+
+=item B<kgb-client> I<option>... --relay-msg I<message>...
+
 =back
 
 =head1 DESCRIPTION
 
-B<kgb-client> is the client counterpart of L<kgb-bot(1)>. Intented usage is as
+B<kgb-client> is the client counterpart of L<kgb-bot(1)>. It is intended to be used as
 a hook in your version control system, executed after the repository gets
 updated. It analyzes the commit(s) and then relays the information about the
 repository, branch, author, modified files and change log to the KGB server,
-whch will show it on IRC.
+which will show it on IRC.
+
+If invoked with the B<--fake> option, B<kgb-client> will send a fake commit to
+the servers. This is useful for testing client-server communication
+independently from VCS setup.
 
 =head1 CONFIGURATION
 
@@ -67,14 +78,14 @@ Specifies the path to kgb-client configuration file.
 
 =back
 
-Configuration options (except B<--conf>) may be specified both in the
+Configuration options (except B<--conf> and B<--fake>) may be specified both in the
 configuration file and on the command line. Usually you want to have all the
 options in a configuration file, because having passwords on the command line
 is insecure. The configuration file also gives more control, for example it
-supports multple servers and multiple ways of detection of branch and module
+supports multiple servers and multiple ways of detection of branch and module
 names.
 
-The configration file is in L<YAML> format. Unless noted otherwise, all the
+The configuration file is in L<YAML> format. Unless noted otherwise, all the
 options below can be used on the command line if prepended with two dashes. An
 example configuration file is shipped with the distribution.
 
@@ -83,7 +94,20 @@ example configuration file is shipped with the distribution.
 =item B<repository> I<type>
 
 Specifies the type of the repository B<kgb-client> shall be working with.
-Currently defaults to C<svn>.
+The default is determined as follows:
+
+=over
+
+=item If both C<GIT_DIR> and C<CVSROOT> are present in the environment, the
+script terminates complaining.
+
+=item If only C<GIT_DIR> or C<CVSROOT> is present in the environment, the
+default is correspondingly Git or CVS.
+
+=item If neither C<GIT_DIR> nor C<CVSROOT> is present, the default is
+Subversion.
+
+=back
 
 =item B<repo-id> I<repository name>
 
@@ -137,7 +161,7 @@ behaviour in versions before 1.14.
 
 =item I<forced>
 
-Only the first line is sent to IRC, regardles of whether it is followed by a
+Only the first line is sent to IRC, regardless of whether it is followed by a
 blank line or not.
 
 =item I<auto>
@@ -150,17 +174,25 @@ IRC and the rest is ignored. This is the default since version 1.14.
 =item B<status-dir> I<directory>
 
 With this option, B<kgb-client> tries to contact the last server that was
-successfuly contacted first. The directory is used to store the information
+successfully contacted first. The directory is used to store the information
 about the last contacted server.
 
 =item B<verbose>
 
 Makes the whole process more verbose.
 
-=item B<web-link> I<string>
+=item B<module> I<string>
+
+For Git repositories, the default value for module is taken to be the last path
+component of GIT_DIR environment variable, with trailing C<.git> removed.
+
+See also the B<branch-and-module-re> setting, useful for multi-project
+repositories.
+
+=item B<web-link> I<template>
 
 Passes a web link to the server, who would make it appear in the notification.
-The following items in I<string> are expanded before sending.
+The following items in I<template> are expanded before sending.
 
 =over
 
@@ -188,13 +220,19 @@ Examples:
 
  http://svn.debian.org/viewvc/kgb?view=revision&revision=${commit}
 
+=item B<short-url-service> I<service>
+
+Makes sense only if B<web-link> is also used. Uses the specified I<service> of
+L<WWW::Shorten> to shorten the link. See the manual of L<WWW::Shorten> for the
+list of supported services.
+
 =back
 
 =head2 Branches and modules
 
-Sometimes development is done in multiple branches. Simetimes, a project
+Sometimes development is done in multiple branches. Sometimes, a project
 consists of multiple sub-projects or modules. It is nice to have the module and
-branc highlighted in notifications. There are two options to help determining
+branch highlighted in notifications. There are two options to help determining
 the module and branch names from a list of changes.
 
 These options are mainly useful when using Subversion. Git commits carry
@@ -246,6 +284,13 @@ having sub-project-specific notifications.
 
 =back
 
+=head1 MESSAGE RELAY MODE
+
+When the B<--relay-msg> option is given, there is no repository to be
+inspected. Instead, the remaining command line arguments are passed verbatim to
+the bot to display on IRC. This can be used for real-time notification about
+other events like bug submissions etc.
+
 =head1 SUPPORTED VERSION CONTROL SYSTEMS
 
 =head2 Subversion
@@ -268,7 +313,7 @@ Both these arguments are supplied to the standard Subversion post-commit hooks.
 
 =head2 Git
 
-B<kgb-client> shall be installed as a B<post-recieve> hook. Something along the
+B<kgb-client> shall be installed as a B<post-receive> hook. Something along the
 following shall do:
 
     #!/bin/sh
@@ -288,7 +333,7 @@ directory in which the changes are being made.
 
 For example:
 
-    ALL /path/to/kgb-client --repo cvs ... "$CVSROOT" "%p"
+    ALL /path/to/kgb-client --repository cvs ... "$CVSROOT" "%p"
 
 =head1 SEE ALSO
 
@@ -315,7 +360,8 @@ my ($conf_file,      $uri,        $proxy,
     $verbose,        $repo_type,  @br_mod_re,
     $br_mod_re_swap, $module,     $ignore_branch,
     @servers,        $git_reflog, $single_line_commits,
-    $status_dir,     $web_link,
+    $status_dir,     $web_link,   $short_url_service,
+    $fake,           $protocol,   $relay_msg,
 );
 GetOptions(
     'conf=s'                     => \$conf_file,
@@ -336,6 +382,10 @@ GetOptions(
     'single-line-commits=s'      => \$single_line_commits,
     'status-dir=s'               => \$status_dir,
     'web-link=s'                 => \$web_link,
+    'short-url-service=s'        => \$short_url_service,
+    'fake!'                      => \$fake,
+    'protocol=s'                 => \$protocol,
+    'relay-msg',                 => \$relay_msg,
 ) or exit 1;
 
 if( $conf_file )
@@ -357,6 +407,9 @@ if( $conf_file )
     $single_line_commits //= $conf->{'single-line-commits'};
     $status_dir //= $conf->{'status-dir'};
     $web_link //= $conf->{'web-link'};
+    $short_url_service //= $conf->{'short-url-service'};
+    $protocol //= $conf->{protocol};
+    $relay_msg //= $conf->{relay_msg};
 
     @servers = map {
         App::KGB::Client::ServerRef->new(
@@ -390,6 +443,40 @@ $single_line_commits =~ m/^(?:on|forced|auto)$/
     or die "Unknown value for the --single-line-commits option "
     . "('$single_line_commits')\n";
 
+if ( $relay_msg ) {
+    die "--relay-msg cannot be used together with --fake\n" if $fake;
+
+    $repo_type = 'IGNORED';
+    $relay_msg = join( ' ', @ARGV );
+}
+
+if ( not $repo_type ) {
+    if ( exists $ENV{GIT_DIR} ) {
+        die "Unable to determine repository type\n"
+            . "both GIT_DIR and CVSROOT present in the environment.\n"
+            . "Please use --repository to force repository type.\n"
+            if exists $ENV{CVSROOT};
+
+        $repo_type = 'git';
+    }
+    elsif ( exists $ENV{CVSROOT} ) {
+        $repo_type = 'cvs';
+    }
+    else {
+        $repo_type = 'svn';
+    }
+}
+
+use Cwd();
+use File::Spec;
+
+if ( $repo_type eq 'git' and not $module and $ENV{GIT_DIR} ) {
+    my @dirs = File::Spec->splitdir( Cwd::abs_path( $ENV{GIT_DIR} ) );
+    pop @dirs if @dirs and $dirs[-1] eq '.git';
+    $module = $dirs[-1];
+    $module =~ s/\.git$// if $module;
+}
+
 my @client_args = (
     repo_id             => $repo_id,
     servers             => \@servers,
@@ -401,11 +488,33 @@ my @client_args = (
     single_line_commits => $single_line_commits,
     status_dir          => $status_dir,
     web_link            => $web_link,
+    short_url_service   => $short_url_service,
+    protocol            => $protocol,
 );
 
-$repo_type||= 'svn';
+push @client_args, ( relay_message => $relay_msg ) if $relay_msg;
 
-if ( $repo_type eq 'svn' ) {
+if ($fake) {
+    warn "Sending fake commit notification\n";
+
+    require App::KGB::Client::Fake;
+
+    my $client = App::KGB::Client::Fake->new( {@client_args} );
+    $client->process();
+
+    exit 0;
+}
+
+if ( $relay_msg ) {
+    eval { require App::KGB::Client::RelayMsg; 1 }
+        or die "Message relay support unavailable\n"
+        . "Error loading App::KGB::Client::RelayMsg:\n"
+        . $@;
+
+    my $client = App::KGB::Client::RelayMsg->new( { @client_args } );
+    $client->process;
+}
+elsif ( $repo_type eq 'svn' ) {
     my($path, $rev) = @ARGV;
     die "Repository path and revision must be given as arguments\n"
         unless $path and $rev;

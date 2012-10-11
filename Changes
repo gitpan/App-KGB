@@ -1,3 +1,61 @@
+1.20 (UNRELEASED)
+ * kgb-add-project: avoid using 'keys($hashref)' which requires too recent perl
+ * Client:
+   + add --reposotory to synopsis
+   + fix --repository in CVS example
+   + CVS: silence debugging output
+   + WWW:Shorten::Debli implementation (uses deb.li for URL shortening)
+   + determine default repository type from the environment
+     (makes --repository useless)
+   + determine default module from git directory
+     (makes --module redundant for Git)
+   + allow explicit protocol configuration
+   + saving of last contacted server -- in a separate method
+ * Server:
+   + ensure trailing \n in KGB->out
+   + note repository id on internal errors
+   + conf.d/*.conf style configuration
+   + use exceptions for handling argument errors
+   + turn on utf8 mode on STDOUT/ERR
+   + use shorter timestamp representation
+ * Both:
+   + protocol 4 (JSON-RPC)
+   + plain message relaying (Closes: #689641)
+
+ * some spellchecking
+
+1.19 (2012-10-05)
+
+ * Bot:
+   + add timestamp to log messages
+   + use KGB->out() instead of plain warn() for consistent log messages
+   + tighten auto-responce rate-limit to stop storms in the first screen
+   + silently ignore empty changes
+   + do not crash on internal errors while processing requests
+ * kgb-add-project: sort the channel hashes to make sure "name" is the first
+   key.
+
+1.18 (2012-10-05)
+  * bot: fix channel-must-have-a-repository check for broadcast channels
+
+1.17 (2012-10-05)
+  * improve wording of web-link description
+  * 50-client.t: support keeping temporary directory
+  * declare POD encoding
+  * additional documentation for web-link
+  * explain status-dir in the sample client config
+  * add support for URL shortening via WWW::Shorten
+    + kgb-client: add libwww-shorten-perl to Recommends
+  * client: add --fake option. Fakes a commit to help testing server connection
+    (Closes: #689540)
+  * bot: introduce broadcast channels which receive notifications from all
+    repositories
+    Closes: #688993
+    + introduce private repositories
+  * bot: fail if a repository has no associated channels
+  * typo/doc fixes
+  * kgb-add-project: add option to save config back to file
+
 1.16 (2012-10-03)
  * Misc
    + Typos in documentation fixed

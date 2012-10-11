@@ -10,16 +10,20 @@ eg/simple-soap-client
 eg/simple-soap-server
 eg/test-client.conf
 eg/test-server-1.conf
+eg/test-server-1.conf.d/repos.conf
 eg/test-server-2.conf
 etc/kgb.conf
 lib/App/KGB.pm
 lib/App/KGB/Change.pm
 lib/App/KGB/Client.pm
 lib/App/KGB/Client/CVS.pm
+lib/App/KGB/Client/Fake.pm
 lib/App/KGB/Client/Git.pm
+lib/App/KGB/Client/RelayMsg.pm
 lib/App/KGB/Client/ServerRef.pm
 lib/App/KGB/Client/Subversion.pm
 lib/App/KGB/Commit.pm
+lib/WWW/Shorten/Debli.pm
 Makefile
 MANIFEST			This list of files
 MANIFEST.SKIP

@@ -39,14 +39,15 @@ App::KGB::Client::ServerRef - server instance in KGB client
         }
     );
 
-    $s->send_changes( $client, $commit, $branch, $module, { extra => stuff } );
+    $s->send_changes( $client, $protocol_ver, $commit, $branch, $module, { extra => stuff } );
+
+    $s->relay_message( $client, $message );
 
 =head1 DESCRIPTION
 
 B<App::KGB::Client::ServerRef> is used in L<App::KGB::Client> to refer to
-remote KGB server instances. It encapsulates sending change sets to the remote
-server, maintaining the SOAP protocol encapsulation and authentication to the
-remote KGB server.
+remote KGB server instances. It encapsulates sending requests to the remote
+server, maintaining protocol encapsulation and authentication.
 
 =head1 CONSTRUCTOR
 
@@ -93,13 +94,15 @@ Be verbose about communicating with KGB server.
 =item B<send_changes> (I<message parameters>)
 
 Transmits the change set and all data about it along with the necessary
-authentication hash. If error occures, an exception is thrown.
+authentication hash. If an error occurs, an exception is thrown.
 
 Message parameters are passed as arguments in the following order:
 
 =over
 
 =item Client instance (L<App::KGB::Client>)
+
+=item Protocol version (or 'auto')
 
 =item Commit (an instance of L<App::KGB::Commit>)
 
@@ -113,6 +116,25 @@ This is a hash reference with additional parameters.
 
 =back
 
+=item B<relay_message>(I<client>, I<message>)
+
+Sends a message to the server for relaying.
+
+=item send_changes_v2($info)
+=item send_changes_v3($info)
+=item send_changes_v4($info)
+
+Methods implementing different protocol versions
+
+=item send_changes_soap($message)
+
+Helper method sending commit information via SOAP. Dies on any error or SOAP
+FAULT.
+
+=item send_changes_json($message)
+
+Helper method sending commit information via JSON-RPC. Dies on errors.
+
 =back
 
 =cut
@@ -125,7 +147,6 @@ __PACKAGE__->mk_accessors( qw( uri proxy password timeout verbose ) );
 use utf8;
 use Carp qw(confess);
 use Digest::SHA qw(sha1_hex);
-use SOAP::Lite;
 
 sub new {
     my $self = shift->SUPER::new( @_ );
@@ -141,10 +162,8 @@ sub new {
 }
 
 sub send_changes {
-    my ( $self, $client, $commit, $branch, $module, $extra ) = @_;
-
-    my $s = SOAP::Lite->new( uri => $self->uri, proxy => $self->proxy );
-    $s->transport->proxy->timeout( $self->timeout // 15 );
+    my ( $self, $client, $protocol_ver, $commit, $branch, $module, $extra )
+        = @_;
 
     # Detect utf8 strings and set the utf8 flag, or try to convert from latin1
     my $repo_id = $client->repo_id;
@@ -174,50 +193,32 @@ sub send_changes {
         }
     }
 
-    my $protocol_ver;
-    my @message;
-    my $checksum;
+    my $info = {
+        repo_id    => $repo_id,
+        rev_prefix => $client->rev_prefix,
+        commit_id  => $commit_id,
+        changes    => [ map ( "$_", @commit_changes ) ],
+        commit_log => $commit_log,
+        author     => $commit_author,
+        branch     => $branch,
+        module     => $module,
+        extra      => $extra,
+    };
 
-    if ( defined($extra) ) {
-        # extra parameters require protocol 3
-        my $serialized = Storable::nfreeze(
-            {   rev_prefix    => $client->rev_prefix,
-                commit_id     => $commit_id,
-                changes       => \@commit_changes,
-                commit_log    => $commit_log,
-                author        => $commit_author,
-                branch        => $branch,
-                module        => $module,
-                extra         => $extra,
+    my $meth;
+    given ($protocol_ver) {
+        when ('auto') {
+            if ( defined($extra) ) {
+                $meth = 'send_changes_v3';
             }
-        );
-        @message = (
-            3, $repo_id, $serialized,
-            sha1_hex( $repo_id, $serialized, $password )
-        );
-    }
-    else {
-        my $message = join("", $repo_id, $commit_id // (),
-            map( "$_", @commit_changes ), $commit_log, $commit_author // (),
-            $branch // (), $module // (), $password );
-        utf8::encode($message);
-        $checksum = sha1_hex($message);
-        # SOAP::Transport::HTTP tries to convert all characters to byte sequences,
-        # but fails. See around line 204
-        @message = (
-            2,
-            (   map {
-                    SOAP::Data->type(
-                        string => Encode::encode( 'UTF-8', $_ ) )
-                } ( $repo_id, $checksum, $client->rev_prefix, $commit_id )
-            ),
-            [ map { SOAP::Data->type( string => "$_" ) } @commit_changes ],
-            (   map {
-                    SOAP::Data->type(
-                        string => Encode::encode( 'UTF-8', $_ ) )
-                } ( $commit_log, $commit_author, $branch, $module, )
-            ),
-        );
+            else {
+                $meth = 'send_changes_v2';
+            }
+        }
+        default { $meth = "send_changes_v$protocol_ver";
+            die "Unsupported protocol version requested ($protocol_ver)\n"
+                unless $self->can($meth);
+        }
     }
 
     if ( $self->verbose ) {
@@ -226,8 +227,27 @@ sub send_changes {
         print "  $_\n" for @commit_changes;
     }
 
-    my $res = $s->commit( \@message );
+    $self->$meth($info);
+}
 
+sub relay_message {
+    my ( $self, $client, $message ) = @_;
+
+    $self->send_changes_json( $client->repo_id,
+        { method => 'relay_message', params => [$message] } );
+}
+
+sub send_changes_soap {
+    my ( $self, $message ) = @_;
+
+    require SOAP::Lite;
+
+    my $s = SOAP::Lite->new( uri => $self->uri, proxy => $self->proxy );
+    $s->transport->proxy->timeout( $self->timeout // 15 );
+
+    my $res = $s->commit($message);
+
+    # SOAP error?
     if ( $res->fault ) {
         die 'SOAP FAULT while talking to '
             . $self->uri . "\n"
@@ -238,8 +258,81 @@ sub send_changes {
             : ''
             );
     }
+}
 
-    #print $res->result(), "\n";
+sub send_changes_json {
+    my ( $self, $repo_id, $message ) = @_;
+
+    require JSON;
+    require JSON::RPC::Client;
+    my $rpc = JSON::RPC::Client->new();
+    $rpc->ua->timeout($self->timeout // 15);
+    $message->{id} = 1;
+    $message->{version} = '1.1';
+    my $hash = sha1_hex( $self->password, $repo_id, JSON::encode_json($message) );
+
+    $rpc->ua->default_header( 'X-KGB-Auth', $hash );
+    $rpc->ua->default_header( 'X-KGB-Project', $repo_id );
+
+    my $res = $rpc->call( $self->uri . '/json-rpc', $message );
+
+    die "Transport error: " . $rpc->status_line . "\n" unless $res;
+    die "Server returned error: " . $res->error_message . "\n"
+        if $res->is_error;
+}
+
+sub send_changes_v2 {
+    my ( $self, $info ) = @_;
+
+    my $message = join( "",
+        $info->{repo_id},
+        $info->{commit_id} // (),
+        map( "$_", @{ $info->{changes} } ),
+        $info->{commit_log},
+        $info->{author} // (),
+        $info->{branch} // (),
+        $info->{module} // (),
+        $self->password );
+    utf8::encode($message);
+    my $checksum = sha1_hex($message);
+    # SOAP::Transport::HTTP tries to convert all characters to byte sequences,
+    # but fails. See around line 204
+    my @message = (
+        2,
+        (   map {
+                SOAP::Data->type(
+                    string => Encode::encode( 'UTF-8', $_ ) )
+            } ( $info->{repo_id}, $checksum, $info->{rev_prefix}, $info->{commit_id} )
+        ),
+        [ map { SOAP::Data->type( string => "$_" ) } @{ $info->{changes} } ],
+        (   map {
+                SOAP::Data->type(
+                    string => Encode::encode( 'UTF-8', $_ ) )
+            } ( $info->{commit_log}, $info->{author}, $info->{branch}, $info->{module} )
+        ),
+    );
+
+    $self->send_changes_soap( \@message );
+}
+
+sub send_changes_v3 {
+    my ( $self, $info ) = @_;
+
+    my $serialized = Storable::nfreeze($info);
+
+    my @message = (
+        3, $info->{repo_id}, $serialized,
+        sha1_hex( $info->{repo_id}, $serialized, $self->password )
+    );
+
+    $self->send_changes_soap(\@message );
+}
+
+sub send_changes_v4 {
+    my ( $self, $info ) = @_;
+
+    $self->send_changes_json( $info->{repo_id},
+        { method => 'commit_v4', params => [$info] } );
 }
 
 1;

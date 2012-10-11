@@ -148,7 +148,7 @@ sub as_string {
 
     my $text = '';
 
-    # ignore flags for modifications (unlless there is also a property change)
+    # ignore flags for modifications (unless there is also a property change)
     $text = "($a$pc)" if $a ne 'M' or $pc;
     $p =~ s,^/,,;    # strip leading slash from paths
     $text .= $p;

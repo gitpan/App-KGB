@@ -30,4 +30,16 @@ servers:
    timeout: 5 # no point in waiting longer for localhost
  - uri: http://remotehost:9999/
    password: "overrides the global one"
+# status-dir is used to store the last successfuly contacted server
+# this information is used later in order to try to contact the same server
+# again (if later contact is within some not very big time frame)
 status-dir: /var/cache/kgb/client-status
+# a commit URL template to send to the server
+# ${module}, ${branch} and ${commit} are replaced with the data from the commit
+# Examples:
+#  "http://svn.debian.org/viewvc/kgb?view=revision&revision=${commit}"
+#  "http://git.debian.org/?p=our-project/${module}.git;a=commitdiff;h=${commit}"
+web-link: ~
+# An optional URL shortening service
+# see WWW::Shorten manual for the list of supported services
+short-url-service: ~

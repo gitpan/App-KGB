@@ -23,17 +23,19 @@ package App::KGB;
 use strict;
 use warnings;
 
+=encoding UTF-8
+
 =head1 NAME
 
 App::KGB - collaborative IRC helper
 
 =cut
 
-our $VERSION = '1.16';
+our $VERSION = '1.20';
 
 =head1 DESCRIPTION
 
-B<App::KGB> is a helper aimed at people working togther using version control
+B<App::KGB> is a helper aimed at people working together using version control
 systems and IRC. It has two parts:
 
 =over

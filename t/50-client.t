@@ -23,7 +23,8 @@ binmode $builder->failure_output, ":utf8";
 binmode $builder->todo_output,    ":utf8";
 
 use File::Temp qw(tempdir);
-my $r = tempdir( CLEANUP => 1 );
+my $r = tempdir( CLEANUP => not $ENV{TEST_KEEP_TEMP} );
+diag "Temporary directory $r will be kept" if $ENV{TEST_KEEP_TEMP};
 
 my $repo = catdir( $r,     'repo' );
 my $wd   = catdir( $r,     'checkout' );

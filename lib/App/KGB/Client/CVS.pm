@@ -186,7 +186,7 @@ sub describe_commit {
 
     return if fork();   # parent process exits
 
-    warn "$$ waiting\n";
+    #warn "$$ waiting\n";
     # wait for the merge file to settle
     while( time() - (stat(MERGE))[9] < 3 ) {
         sleep(1);

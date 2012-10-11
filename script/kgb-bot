@@ -26,7 +26,7 @@ use utf8;
 
 kgb-bot - an IRC bot helping collaborative work
 
-=head1 SYNOPSYS
+=head1 SYNOPSIS
 
 kgb-bot [--config I<file>] [--foreground] [--simulate I<file>]
 
@@ -36,7 +36,12 @@ kgb-bot [--config I<file>] [--foreground] [--simulate I<file>]
 
 =item --config I<file>
 
-Specify configuration file to load. Default is C</etc/kgb/kgb.conf>.
+Specify configuration file to load. Default is F</etc/kgb-bot/kgb.conf>.
+
+=item --config-dir I<directory>
+
+Specify directory with configuration files to load. All files like F<*.conf>
+are loaded, in alphabetical order. Default is F</etc/kgb-bot/kgb.conf.d>.
 
 =item --foreground
 
@@ -64,13 +69,14 @@ use strict;
 use warnings;
 use encoding 'utf8';
 use open ':encoding(utf8)';
+use Time::Piece qw(localtime);
 
-our $VERSION = '1.16';
+our $VERSION = '1.20';
 
 use Cwd;
 
 our $config;
-our $config_file;
+our ( $config_file, $config_dir );
 our %const = (
     SOAPsvc => "SOAPServer",
     BAsvc   => "BotAddressed",
@@ -116,11 +122,61 @@ sub polygen_available () {
     return $polygen;
 }
 
-sub read_conf ($) {
-    my $file = shift;
+sub merge_conf_hash($$);
 
-    my $conf = YAML::LoadFile($file)
-        or die "Error loading config from $file\n";
+sub merge_conf_hash($$) {
+    my ( $dst, $src ) = @_;
+
+    while ( my ($k, $v) = each %$src ) {
+        if ( ref($v) ) {
+            if ( exists $dst->{$k} ) {
+                die
+                    "Error merging key '$k': source is a reference, but destination is scalar\n"
+                    unless ref( $dst->{$k} );
+                ref( $dst->{$k} ) eq ref($v)
+                    or die
+                    "Error merging key '$k': reference type mismatch\n";
+                if ( ref($v) eq 'ARRAY' ) {
+                    push @{ $dst->{$k} }, @$v;
+                }
+                elsif ( ref($v) eq 'HASH' ) {
+                    merge_conf_hash( $dst->{$k}, $v );
+                }
+                else {
+                    die "Error merging key '$k': unknown reference type\n";
+                }
+            }
+            else {
+                $dst->{$k} = $v;
+            }
+        }
+        else {
+            die
+                "Error merging key '$k': source is scalar, but destination is not\n"
+                if exists $dst->{$k} and ref( $dst->{$k} );
+            $dst->{$k} = $v;
+        }
+    }
+}
+
+sub read_conf ($$) {
+    my $file = shift;
+    my $dir  = shift;
+
+    my $conf;
+    $conf = YAML::LoadFile($file)
+        or die "Error loading config from $file\n"
+        if -e $file;
+
+    if ( defined($dir) and length($dir) and -e $dir ) {
+        for ( sort <$dir/*.conf> ) {
+            my $c = YAML::LoadFile($_) or die "Error loading $_\n";
+
+            eval { merge_conf_hash( $conf, $c ); 1 } or die "Error loading $_: $@";
+        }
+    }
+    my @confs = map { YAML::LoadFile($_) or "Error loading config from $_" }
+        sort <$dir/*.conf>;
 
     die "Invalid or missing config key: soap"
         unless ( ref $conf->{soap}
@@ -170,19 +226,32 @@ sub read_conf ($) {
             unless $conf->{networks}{$_}{server};
     }
 
+    $conf->{broadcast_channels} = [];
+
+    $_->{channels} //= [] for values %{ $conf->{repositories} };
+
     foreach ( @{ $conf->{channels} } ) {
+        $_->{repositories} //= [];
         die "Missing channel name at channel\n" unless ( $_->{name} );
         die "Invalid network at channel " . $_->{name} . "\n"
             unless ( $_->{network} and $conf->{networks}{ $_->{network} } );
         push @{ $conf->{networks}{ $_->{network} }{channels} }, $_->{name};
         die "Invalid repos key at channel " . $_->{name} . "\n"
-            unless ( ref $_->{repos} and ref $_->{repos} eq "ARRAY" );
-        warn "Channel " . $_->{name} . " doesn't listen on any repository\n"
-            unless ( @{ $_->{repos} } );
-        foreach my $repo ( @{ $_->{repos} } ) {
-            die "Invalid repository $repo at channel " . $_->{name} . "\n"
-                unless ( $conf->{repositories}{$repo} );
-            push @{ $conf->{repositories}{$repo}{channels} }, $_->{name};
+            unless $_->{broadcast}
+            or ( ref $_->{repos} and ref $_->{repos} eq "ARRAY" );
+        if ( $_->{broadcast} ) {
+            push @{ $conf->{broadcast_channels} }, $_->{name};
+            KGB->out("Repository list ignored for broadcast channel $_->{name}\n")
+                if @{ $_->{repositories} };
+        }
+        else {
+            KGB->out("Channel " . $_->{name} . " doesn't listen on any repository\n")
+                unless @{ $_->{repos} };
+            foreach my $repo ( @{ $_->{repos} } ) {
+                die "Invalid repository $repo at channel " . $_->{name} . "\n"
+                    unless ( $conf->{repositories}{$repo} );
+                push @{ $conf->{repositories}{$repo}{channels} }, $_->{name};
+            }
         }
     }
     my %chanidx
@@ -209,41 +278,45 @@ sub read_conf ($) {
     return $conf;
 }
 
-sub load_conf($) {
+sub load_conf($$) {
     my $file = shift;
-    my $conf = read_conf($file);
+    my $dir = shift;
+    my $conf = read_conf($file, $dir);
 
     # Save globals
     $config_file = Cwd::realpath($file);
+    $config_dir  = Cwd::realpath($dir);
     $config      = $conf;
     return $conf;
 }
 
 sub reload_conf() {
-    my $new_conf = eval { KGB::read_conf($config_file) };
+    my $new_conf = eval { KGB::read_conf($config_file, $config_dir) };
     if ($@) {
-        warn "Error in configuration file: $@";
+        KGB->out("Error in configuration file: $@");
         return -1;
     }
     if (   $new_conf->{soap}{service_name} ne $config->{soap}{service_name}
         or $new_conf->{soap}{server_port} ne $config->{soap}{server_port}
         or $new_conf->{soap}{server_addr} ne $config->{soap}{server_addr} )
     {
-        warn "Cannot reload configuration file, restarting\n";
+        KGB->out("Cannot reload configuration file, restarting\n");
         return -2;    # need restart
     }
-    warn "Configuration file reloaded\n";
+    KGB->out("Configuration file reloaded\n");
     $config = $new_conf;
     return 0;
 }
 
 sub out {
     shift;
-    print $KGB::out @_;
+    print $KGB::out localtime->strftime('%Y.%m.%d %H:%M:%S').': ', @_, ( $_[-1] =~ /\n$/s ) ? () : "\n";
 }
 
 sub debug {
-    shift->out(@_) if $KGB::config->{debug};
+    return unless $KGB::config->{debug};
+
+    shift->out( @_ );
 }
 
 sub open_log {
@@ -259,6 +332,9 @@ sub open_log {
         open( STDERR, ">", "/dev/null" )
             or die "Error closing stderr: $!\n";
     }
+
+    binmode(STDOUT, ':utf8');
+    binmode(STDERR, ':utf8');
 }
 
 package KGB::POE;
@@ -286,7 +362,7 @@ sub _start {
     );
     $kernel->yield("_irc_reconnect") unless $KGB::simulate;
 
-    warn(
+    KGB->out(
         "Listening on http://", $KGB::config->{soap}{server_addr},
         ":",                    $KGB::config->{soap}{server_port},
         "?session=",            $KGB::config->{soap}{service_name},
@@ -298,7 +374,7 @@ sub _start {
 sub _stop {
     my $kernel  = $_[KERNEL];
     my $session = $_[SESSION]->ID();
-    warn "_stop \@session $session\n";
+    KGB->out("_stop \@session $session\n");
     $kernel->post(
         SOAPServer => 'DELSERVICE',
         $KGB::config->{soap}{service_name}
@@ -310,7 +386,7 @@ sub sighandler {
     if ($KGB::shuttingdown) {
         die "Dying forcefully...\n";
     }
-    warn "Deadly signal $sig received, exiting...\n";
+    KGB->out("Deadly signal $sig received, exiting...\n");
     $kernel->sig_handled();
     $kernel->signal(
         $kernel => 'POCOIRC_SHUTDOWN',
@@ -327,7 +403,7 @@ sub restarthandler {
     if ($KGB::shuttingdown) {
         die "Dying forcefully...\n";
     }
-    warn "Signal $sig received, restarting...\n";
+    KGB->out("Signal $sig received, restarting...\n");
     $kernel->sig_handled();
     $KGB::restart      = 1;
     $KGB::shuttingdown = 1;
@@ -339,14 +415,14 @@ sub restarthandler {
 
 sub reloadhandler {
     my ( $kernel, $sig ) = ( $_[KERNEL], $_[ARG0] );
-    warn "Signal $sig received, reloading...\n";
+    KGB->out("Signal $sig received, reloading...\n");
     $kernel->sig_handled();
     my $ret = KGB::reload_conf();
     if ( $ret == -1 ) {    # error in config file
         return undef;
     }
     elsif ( $ret == -2 ) {    # needs reload
-        warn "Forcing restart\n";
+        KGB->out("Forcing restart\n");
         $KGB::restart      = 1;
         $KGB::shuttingdown = 1;
         $kernel->signal( $kernel => 'POCOIRC_SHUTDOWN', "KGB restartink" );
@@ -358,7 +434,7 @@ sub reloadhandler {
     # reopen log file
     # we catch any exceptions, because we don't want reloading to be able
     # to kill the server
-    warn "Error re-openning logs: $@\n" unless eval { KGB::open_log(); 1 };
+    KGB->out("Error re-openning logs: $@\n") unless eval { KGB::open_log(); 1 };
 
     # Reload successful
     $kernel->yield("_irc_reconnect");
@@ -375,6 +451,7 @@ use List::Util qw(max);
 use Digest::SHA qw(sha1_hex);
 use File::Basename;
 use App::KGB::Change;
+use Error ':try';
 
 our %color_codes = (
     bold      => "\002",     # ^B
@@ -434,7 +511,7 @@ sub colorize_change {
 }
 
 sub do_commit_msg {
-    my ($kernel, $response, $repo_id, $data) = @_;
+    my ($kernel, $repo_id, $data) = @_;
 
     my $rev_prefix = $data->{rev_prefix} // '';
     my $commit_id = $data->{commit_id};
@@ -444,12 +521,22 @@ sub do_commit_msg {
     my $branch = $data->{branch} // '';
     my $module = $data->{module} // '';
 
+    my $repo = $KGB::config->{repositories}{$repo_id};
+
+    my @channels = @{ $repo->{channels} };
+    push @channels, @{ $KGB::config->{broadcast_channels} }
+        unless $repo->{private};
+
+    throw Error::Simple("Repository $repo_id has no associated channels.")
+        unless (@channels);
+
     my $path_string;
     my %dirs;
     my $changed_files   = scalar(@$changes);
     my $MAGIC_MAX_FILES = 4;
 
-    $_ = App::KGB::Change->new($_) for @$changes;    # convert to objects
+    $_ = App::KGB::Change->new($_)
+        for grep { defined($_) and $_ ne '' } @$changes;  # convert to objects
 
     my $common_dir = App::KGB::Change->detect_common_dir($changes) // '';
 
@@ -500,16 +587,12 @@ sub do_commit_msg {
     }
 
     my @tmp;
-
     # Standard says 512 (minus \r\n), anyway that's further trimmed when
     # resending to clients because of prefix.
     # Let's trim on 400, to be safe
-    my $MAGIC_MAX_LINE = (
-        400 - length("PRIVMSG ") - max(
-            map( length,
-                @{ $KGB::config->{repositories}{$repo_id}{channels} } )
-        )
-    );
+    my $MAGIC_MAX_LINE
+        = ( 400 - length("PRIVMSG ") - max( map( length, @channels ) ) );
+
     while ( $_ = shift @string ) {
         if ( length($_) > $MAGIC_MAX_LINE ) {
             push @tmp, substr( $_, 0, $MAGIC_MAX_LINE );
@@ -522,8 +605,8 @@ sub do_commit_msg {
         }
     }
     @string = @tmp;
-    foreach my $chan ( @{ $KGB::config->{repositories}{$repo_id}{channels} } )
-    {
+
+    foreach my $chan ( @channels ) {
         if ($KGB::simulate) {
             my $fh = IO::File->new(">> $KGB::simulate")
                 or die "Error opening $KGB::simulate for writing: $!\n";
@@ -538,37 +621,21 @@ sub do_commit_msg {
             $kernel->yield( irc_notify => $chan => \@string );
         }
     }
-    $response->content("OK");
-    $kernel->post( SOAPServer => 'DONE', $response );
 }
 
 sub do_commit_v0 {
-    my ( $kernel, $response, $repo_id, $passwd, $rev, $paths, $log, $author )
+    my ( $kernel, $repo_id, $passwd, $rev, $paths, $log, $author )
         = @_;
 
-    unless ( $KGB::config->{repositories}{$repo_id} ) {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Repository $repo_id is unknown"
-        );
-        warn("Unknown repository '$repo_id'\n");
-        return;
-    }
-    if (    $KGB::config->{repositories}{$repo_id}{password}
-        and $KGB::config->{repositories}{$repo_id}{password} ne $passwd )
-    {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Invalid password for repository $repo_id"
-        );
-        warn("Invalid password\n");
-        return;
-    }
+    throw Error::Simple("Unknown repository '$repo_id'")
+        unless $KGB::config->{repositories}{$repo_id};
+
+    throw Error::Simple("Invalid password for repository $repo_id")
+        if $KGB::config->{repositories}{$repo_id}{password}
+        and $KGB::config->{repositories}{$repo_id}{password} ne $passwd;
+
     do_commit_msg(
         $kernel,
-        $response,
         $repo_id,
         {   rev_prefix => 'r',
             commit_id  => $rev,
@@ -580,31 +647,26 @@ sub do_commit_v0 {
 }
 
 sub do_commit_v1 {
-    my ($kernel, $response, $repo_id, $checksum, $rev,
+    my ($kernel, $repo_id, $checksum, $rev,
         $paths,  $log,      $author,  $branch,   $module
     ) = @_;
 
     # v1 is the same as v2, but has no rev_prefix parameter
     return do_commit_v2(
-        $kernel, $response, $repo_id, $checksum, 'r', $rev,
+        $kernel, $repo_id, $checksum, 'r', $rev,
         $paths,  $log,      $author,  $branch,   $module
     );
 }
 
 sub do_commit_v2 {
-    my ($kernel,     $response, $repo_id, $checksum,
+    my ($kernel,     $repo_id, $checksum,
         $rev_prefix, $rev,      $paths,   $log,
         $author,     $branch,   $module,
     ) = @_;
-    unless ( $KGB::config->{repositories}{$repo_id} ) {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Repository $repo_id is unknown"
-        );
-        warn("Unknown repository\n");
-        return;
-    }
+
+    throw Error::Simple("Repository $repo_id is unknown")
+        unless $KGB::config->{repositories}{$repo_id};
+
     # Protocol v2 always uses UTF-8
     utf8::decode($_)
         for ( $repo_id, $rev, @$paths, $log, $author, $branch, $module );
@@ -618,20 +680,13 @@ sub do_commit_v2 {
         ( defined($module) ? $module : () ),
         $KGB::config->{repositories}{$repo_id}{password} );
     utf8::encode($message);    # Convert to byte-sequence
-    if ( $KGB::config->{repositories}{$repo_id}{password}
-        and sha1_hex($message) ne $checksum )
-    {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Authentication failed for repository $repo_id"
-        );
-        warn("Authentication failed for repository $repo_id\n");
-        return;
-    }
+
+    throw Error::Simple("Authentication failed for repository $repo_id")
+        if $KGB::config->{repositories}{$repo_id}{password}
+        and sha1_hex($message) ne $checksum;
+
     do_commit_msg(
         $kernel,
-        $response,
         $repo_id,
         {   rev_prefix => $rev_prefix,
             commit_id  => $rev,
@@ -645,66 +700,71 @@ sub do_commit_v2 {
 }
 
 sub do_commit_v3 {
-    my ( $kernel, $response, $repo_id, $serialized, $checksum ) = @_;
+    my ( $kernel, $repo_id, $serialized, $checksum ) = @_;
 
-    unless ( exists $KGB::config->{repositories}{$repo_id} ) {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Repository $repo_id is unknown"
-        );
-        warn("Unknown repository ($repo_id)\n");
-
-        return;
-    }
+    throw Error::Simple("Repository $repo_id is unknown")
+        unless exists $KGB::config->{repositories}{$repo_id};
 
     my $pwd = $KGB::config->{repositories}{$repo_id}{password};
-    if ( not defined($pwd)
-        or sha1_hex( $repo_id, $serialized, $pwd ) ne $checksum )
-    {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Authentication failed for repository $repo_id"
-        );
-        warn("Authentication failed for repository $repo_id\n");
-        return;
-    }
+    throw Error::Simple("Authentication failed for repository $repo_id")
+        if not defined($pwd)
+        or sha1_hex( $repo_id, $serialized, $pwd ) ne $checksum;
 
     my $data;
     my $ok = eval { $data = Storable::thaw($serialized); 1 };
-    unless ($ok) {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Invalid serialized data"
-        );
-        return;
-    }
 
-    do_commit_msg( $kernel, $response, $repo_id, $data );
+    throw Error::Simple("Invalid serialized data")
+        unless $ok;
+
+    do_commit_msg( $kernel, $repo_id, $data );
 }
 
 sub commit {
     my $kernel   = $_[KERNEL];
     my $response = $_[ARG0];
     my $params   = $response->soapbody();
-    KGB->out( "commit: " . YAML::Dump($params) ) if ( $KGB::config->{debug} );
 
-    unless (ref $params
-        and ref $params eq "HASH"
-        and $params->{Array}
-        and ref $params->{Array}
-        and ref $params->{Array} eq "ARRAY" )
-    {
+    my $result;
+    try {
+        $result = do_commit( $kernel, $params );
+    }
+    catch Error::Simple with {
+        my $E = shift;
+        KGB->out("$E");
         $kernel->post(
             SOAPServer => 'FAULT',
             $response, 'Client.Arguments',
-            'commit(params ...)'
+            "$E",
         );
-        KGB->debug("Invalid call\n");
         return;
     }
+    otherwise {
+        my $E = shift;
+        KGB->out("commit crashed: $E");
+        $kernel->post(
+            SOAPServer => 'FAULT',
+            $response, 'Server.Code',
+            'Internal Server Error'
+        );
+        return;
+    };
+
+    $response->content("OK");
+    $kernel->post( SOAPServer => 'DONE', $response );
+}
+
+sub do_commit {
+    my ( $kernel, $params ) = @_;
+
+    KGB->out( "commit: " . YAML::Dump($params) ) if ( $KGB::config->{debug} );
+
+    throw Error::Simple('commit(params ...)')
+        unless ref $params
+        and ref $params eq "HASH"
+        and $params->{Array}
+        and ref $params->{Array}
+        and ref $params->{Array} eq "ARRAY";
+
     my $proto_ver;
     if ( @{ $params->{Array} } == 6 ) {
         $proto_ver = 0;
@@ -712,52 +772,34 @@ sub commit {
     else {
         $proto_ver = shift @{ $params->{Array} };
     }
-    unless (defined($proto_ver)
-        and $KGB::supported_protos{$proto_ver}
-        and $proto_ver >= $KGB::config->{min_protocol_ver} )
-    {
-        $proto_ver = "<undef>" unless defined($proto_ver);
 
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Arguments',
-            "Protocol version $proto_ver not welcomed"
-        );
-        KGB->debug("Protocol version $proto_ver rejected\n");
-        return;
-    }
-    if (    $KGB::config->{queue_limit}
+    throw Error::Simple(
+        sprintf(
+            "Protocol version %s not welcomed", $proto_ver // '<undef>'
+        )
+        )
+        unless defined($proto_ver)
+        and $KGB::supported_protos{$proto_ver}
+        and $proto_ver >= $KGB::config->{min_protocol_ver};
+
+    throw Error::Simple('Rate limit enforced')
+        if $KGB::config->{queue_limit}
         and $KGB::IRC::irc_object
-        and $KGB::config->{queue_limit} < $KGB::IRC::irc_object->send_queue )
-    {
-        $kernel->post(
-            SOAPServer => 'FAULT',
-            $response, 'Client.Slowdown',
-            "Server is overworked"
-        );
-        KGB->debug("Rate limit enforced\n");
-        return;
-    }
+        and $KGB::config->{queue_limit} < $KGB::IRC::irc_object->send_queue;
 
     if ( $proto_ver == 0 ) {
-        return do_commit_v0( $kernel, $response, @{ $params->{Array} } );
+        return do_commit_v0( $kernel, @{ $params->{Array} } );
     }
     if ( $proto_ver == 1 ) {
-        return do_commit_v1( $kernel, $response, @{ $params->{Array} } );
+        return do_commit_v1( $kernel, @{ $params->{Array} } );
     }
     if ( $proto_ver == 2 ) {
-        return do_commit_v2( $kernel, $response, @{ $params->{Array} } );
+        return do_commit_v2( $kernel, @{ $params->{Array} } );
     }
     if ( $proto_ver == 3 ) {
-        return do_commit_v3( $kernel, $response, @{ $params->{Array} } );
+        return do_commit_v3( $kernel, @{ $params->{Array} } );
     }
-    $kernel->post(
-        SOAPServer => 'FAULT',
-        $response, 'Client.Arguments',
-        "Invalid protocol version ($proto_ver)"
-    );
-    KGB->debug("Invalid protocol version ($proto_ver)\n");
-    return;
+    throw Error::Simple("Invalid protocol version ($proto_ver)");
 }
 
 package KGB::IRC;
@@ -773,7 +815,7 @@ use Schedule::RateLimiter;
 our %current = ();
 our $irc_object;
 our $autoresponse_limitter
-    = Schedule::RateLimiter->new( iterations => 10, seconds => 60,
+    = Schedule::RateLimiter->new( iterations => 5, seconds => 30,
     block => 0 );
 
 # Handles the connection, disconnection and real-time configuration changes WRT
@@ -1007,7 +1049,7 @@ sub got_a_message {
     my $net = get_net($sender);
 
     unless ( $autoresponse_limitter->event() ) {
-        warn "Auto response rate-limit reached.\n";
+        KGB->out("Auto response rate-limit reached.\n");
         return undef;
     }
 
@@ -1111,6 +1153,167 @@ sub irc_command {
     }
 }
 
+package KGB::JSON;
+
+use JSON;
+use POE;
+use Digest::SHA qw(sha1_hex);
+
+sub json_error {
+    my ( $json, $resp, $error ) = @_;
+    KGB->out($error);
+    $resp->code(200);
+    $resp->message('OK');
+    $resp->content(
+        encode_json(
+            { id => $json->{id} // 0, error => $error, result => undef }
+        )
+    );
+}
+
+sub http_error {
+    my ( $resp, $error, $code ) = @_;
+    KGB->out($error);
+    $resp->code($code // 400);
+    $resp->message('Invalid request');
+    $resp->content($error);
+}
+
+sub json_request {
+    my ( $req, $resp, $path ) = @_[ ARG0, ARG1, ARG2 ];
+
+    my ($repo_id, $auth);
+    unless (defined( $repo_id = $req->header('X-KGB-Project') )
+        and defined( $auth = $req->header('X-KGB-Auth') ) )
+    {
+        http_error( $resp,
+            'Invalid or missing X-KGB-Project or X-KGB-Auth headers' );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+
+    unless ( exists $KGB::config->{repositories}{$repo_id} ) {
+        http_error( $resp, "Unknown project ($repo_id)" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+    my $check = sha1_hex( $KGB::config->{repositories}{$repo_id}{password},
+        $repo_id, $req->content );
+
+    unless ( $check eq $auth ) {
+        http_error( $resp, "[$repo_id] Authentication failed", 401 );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+
+    my $json;
+    my $ok = eval { $json = decode_json( $req->content ); 1; };
+
+    unless ($ok) {
+        http_error( $resp, "[$repo_id] Error decoding JSON request" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+
+    unless (exists $json->{method}
+        and defined $json->{method}
+        and not ref( $json->{method} )
+        and length $json->{method} )
+    {
+        json_error( $json, $resp, "[$repo_id] Request has no valid \"method\" member" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+    unless (exists $json->{params}
+        and defined $json->{params}
+        and ref( $json->{params} )
+        and ref( $json->{params} ) eq 'ARRAY'
+        and length $json->{params} )
+    {
+        json_error( $json, $resp, "[$repo_id] Request has no valid \"params\" member" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+    unless (exists $json->{id}
+        and defined $json->{id}
+        and not ref( $json->{id} )
+        and length $json->{id} )
+    {
+        json_error( $json, $resp, "[$repo_id] Request has no valid \"id\" member" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+
+    my $json_result;
+    $ok = eval {
+        $json_result = encode_json(
+            {   id     => $json->{id} // 0,
+                result => __PACKAGE__->handle_json_request( $_[KERNEL], $repo_id, $json ),
+                error  => undef
+            }
+        );
+        1;
+    };
+
+    unless ($ok) {
+        KGB->out($@);
+        json_error( $json, $resp, "[$repo_id] Internal server error" );
+        $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+        return;
+    }
+
+    $resp->code(200);
+    $resp->message('OK');
+    $resp->content($json_result);
+    $_[KERNEL]->post( $_[SENDER], DONE => $resp );
+    return;
+}
+
+sub handle_json_request {
+    my ( $self, $kernel, $repo_id, $req ) = @_;
+
+    my $meth = "do_json_$req->{method}";
+
+    die "Unknown method '$req->{method}'" unless $self->can($meth);
+
+    return $self->$meth( $kernel, $repo_id, @{ $req->{params} } );
+}
+
+sub do_json_commit_v4 {
+    my ( $self, $kernel, $repo_id, $data ) = @_;
+
+    KGB::SOAP::do_commit_msg( $kernel, $repo_id, $data );
+}
+
+sub do_json_relay_message {
+    my ( $self, $kernel, $repo_id, $message ) = @_;
+
+    defined $repo_id or die "Missing repo_id argument\n";
+    exists $KGB::config->{repositories}{$repo_id} or die "Invalid repository '$repo_id'\n";
+    my $repo = $KGB::config->{repositories}{$repo_id};
+    my @channels = @{ $repo->{channels} };
+    die("Repository $repo_id has no associated channels.\n") unless @channels;
+
+    defined($message) or die "No message parameter";
+    length($message) or die "Empty message";
+
+    foreach my $chan ( @channels ) {
+        if ($KGB::simulate) {
+            my $fh = IO::File->new(">> $KGB::simulate")
+                or die "Error opening $KGB::simulate for writing: $!\n";
+            $fh->autoflush(1);
+            $fh->binmode(':utf8');
+            $fh->print("$chan $message\n");
+            $fh->close;
+        }
+        else {
+            $kernel->yield( irc_notify => $chan => [ $message ] );
+        }
+    }
+
+    return 'OK';
+}
+
 package main;
 
 use strict;
@@ -1132,19 +1335,21 @@ KGB::save_progname();
 $KGB::out = \*STDERR;
 
 my $conf_file  = '/etc/kgb-bot/kgb.conf';
+my $conf_dir   = '/etc/kgb-bot/kgb.conf.d';
 my $foreground = 0;
 $KGB::simulate = 0;
 
 Getopt::Long::Configure("bundling");
 GetOptions(
     'c|config=s'   => \$conf_file,
+    'cd|config-dir=s' => \$conf_dir,
     'f|foreground' => \$foreground,
     'simulate=s'    => \$KGB::simulate,
 ) or die 'Invalid parameters';
 
 @ARGV and die "No command line arguments supported\n";
 
-KGB::load_conf($conf_file);
+KGB::load_conf( $conf_file, $conf_dir );
 
 use Cwd;
 $KGB::simulate = Cwd::realpath($KGB::simulate) if $KGB::simulate;
@@ -1198,6 +1403,21 @@ POE::Component::Server::SOAP->new(
     ALIAS   => $KGB::const{SOAPsvc},
     ADDRESS => $KGB::config->{soap}{server_addr},
     PORT    => $KGB::config->{soap}{server_port},
+    # override PoCo::SOAP HANDLERS to plug json-rpc
+    SIMPLEHTTP => {
+                'HANDLERS'      =>      [
+                        {
+                                'DIR'           =>      '^/json-rpc',
+                                'SESSION'       =>      $KGB::config->{soap}{service_name},
+                                'EVENT'         =>      'json_request',
+                        },
+                        {
+                                'DIR'           =>      '.*',
+                                'SESSION'       =>      'SOAPServer',
+                                'EVENT'         =>      'Got_Request',
+                        },
+                ],
+    },
 );
 
 POE::Session->create(
@@ -1212,6 +1432,7 @@ POE::Session->create(
                 irc_command irc_msg),
         ],
         "KGB::SOAP" => [qw(commit)],
+        'KGB::JSON' => [qw(json_request)],
     ],
 
     #    options => {trace => 1, debug => 1}

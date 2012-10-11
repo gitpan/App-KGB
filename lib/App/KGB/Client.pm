@@ -107,7 +107,7 @@ name in the second, use this option to signal the fact to B<kgb-client>.
 =item B<ignore_branch>
 
 When most of the development is in one branch, transmitting it to the KGB
-server and seeing it on IRC all the time can be annoing. Therefore, if you
+server and seeing it on IRC all the time can be annoying. Therefore, if you
 define B<ignore_branch>, and a given commit is in a branch with that name, the
 branch name is not transmitted to the server. Module name is still transmitted.
 
@@ -131,7 +131,7 @@ behaviour in versions before 1.14.
 
 =item I<forced>
 
-Only the first line is sent to IRC, regardles of whether it is followed by a
+Only the first line is sent to IRC, regardless of whether it is followed by a
 blank line or not.
 
 =item I<auto>
@@ -144,7 +144,7 @@ IRC and the rest is ignored. This is the default since version 1.14.
 =item B<status_dir>
 
 Specifies a directory to store information about the last server contacted
-successfuly. The client would touch files in that directory after successful
+successfully. The client would touch files in that directory after successful
 completion of a notification with remote server.
 
 Later, when asked to do another notification, the client would start from the
@@ -156,9 +156,15 @@ usual.
 
 Print diagnostic information.
 
-=item B<web_link> I<string>
+=item B<protocol> I<version>
 
-A web link string to be sent to the server. The folowing items are expanded:
+Use specified protocol version. If C<auto> (the default), the version of the
+protocol C<2>, unless B<web_link> is also given, in which case protocol version
+C<3> is default;
+
+=item B<web_link> I<template>
+
+A web link template to be sent to the server. The following items are expanded:
 
 =over
 
@@ -169,6 +175,11 @@ A web link string to be sent to the server. The folowing items are expanded:
 =item ${commit}
 
 =back
+
+=item B<short_url_service> I<service>
+
+A L<WWW::Shorten> service to use for shortening the B<web_link>. See
+L<WWW::Shorten> for the list of supported services.
 
 =back
 
@@ -185,7 +196,8 @@ use List::Util ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
     qw( repo_id servers br_mod_re br_mod_re_swap module ignore_branch
-        single_line_commits status_dir verbose web_link _last_server )
+        single_line_commits status_dir verbose protocol
+        web_link short_url_service _last_server )
 );
 
 =head1 CONSTRUCTOR
@@ -228,6 +240,8 @@ sub new {
             $self->status_dir(undef);
         }
     }
+
+    $self->protocol('auto') unless defined( $self->protocol );
 
     return $self;
 }
@@ -438,6 +452,59 @@ sub expand_link {
     return $output;
 }
 
+=item shorten_url (url)
+
+Uses the configured I<short_url_service> to shorten the given URL. If no
+shortening service is configured, the original URL is returned.
+
+=cut
+
+sub shorten_url {
+    my ( $self, $url ) = @_;
+    return unless my $service = $self->short_url_service;
+
+    my $ok = eval {
+        require WWW::Shorten;
+        WWW::Shorten->import( $service, ':short' );
+        1;
+    };
+
+    unless ($ok) {
+        warn "Unable to load URL shortening service '$service': $@";
+        warn "Sending plain URL.\n";
+        return $url;
+    }
+
+    my $short_url = short_link($url);
+
+    return $short_url if defined($short_url);
+
+    warn "URL shortening service '$service' failed.\n";
+    warn "Sending plain URL.\n";
+    return $url;
+}
+
+=item note_last_server($srv)
+
+If C<status_dir> is configured, notes $srv as the last used server to be used
+in subsequent requests.
+
+=cut
+
+sub note_last_server {
+    my ( $self, $srv ) = @_;
+
+    return unless $self->status_dir;
+
+    require File::Touch;
+    File::Touch::touch(
+        File::Spec->catfile(
+            $self->status_dir,
+            sprintf( "kgb-client.%s", md5_hex( $srv->uri ) )
+        )
+    );
+}
+
 =item process_commit ($commit)
 
 Processes a single commit, trying to send the changes summary to each of the
@@ -462,10 +529,11 @@ sub process_commit {
     }
 
     my $web_link = $self->web_link;
-    $web_link
-        = $self->expand_link( $web_link,
-        { branch => $branch, module => $module, commit => $commit->id } )
-        if defined($web_link);
+    if ( defined($web_link) ) {
+        $web_link = $self->expand_link( $web_link,
+            { branch => $branch, module => $module, commit => $commit->id } );
+        $web_link = $self->shorten_url($web_link);
+    }
 
     $branch = undef
         if $branch and $branch eq ( $self->ignore_branch // '' );
@@ -478,18 +546,10 @@ sub process_commit {
         $failure = eval {
             my @args = ( $commit, $branch, $module );
             push @args, { web_link => $web_link } if defined($web_link);
-            $srv->send_changes( $self, @args );
+            $srv->send_changes( $self, $self->protocol, @args );
             $self->_last_server($srv);
 
-            if ( $self->status_dir ) {
-                require File::Touch;
-                File::Touch::touch(
-                    File::Spec->catfile(
-                        $self->status_dir,
-                        sprintf( "kgb-client.%s", md5_hex( $srv->uri ) )
-                    )
-                );
-            }
+            $self->note_last_server($srv);
             0;
         } // 1;
 

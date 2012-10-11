@@ -56,7 +56,7 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.16"
+         "version" : "1.20"
       },
       "App::KGB::Change" : {
          "file" : "lib/App/KGB/Change.pm",
@@ -70,8 +70,16 @@
          "file" : "lib/App/KGB/Client/CVS.pm",
          "version" : 0
       },
+      "App::KGB::Client::Fake" : {
+         "file" : "lib/App/KGB/Client/Fake.pm",
+         "version" : 0
+      },
       "App::KGB::Client::Git" : {
          "file" : "lib/App/KGB/Client/Git.pm",
+         "version" : 0
+      },
+      "App::KGB::Client::RelayMsg" : {
+         "file" : "lib/App/KGB/Client/RelayMsg.pm",
          "version" : 0
       },
       "App::KGB::Client::ServerRef" : {
@@ -85,6 +93,10 @@
       "App::KGB::Commit" : {
          "file" : "lib/App/KGB/Commit.pm",
          "version" : 0
+      },
+      "WWW::Shorten::Debli" : {
+         "file" : "lib/WWW/Shorten/Debli.pm",
+         "version" : "0.1"
       }
    },
    "release_status" : "stable",
@@ -93,5 +105,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
       ]
    },
-   "version" : "1.16"
+   "version" : "1.20"
 }

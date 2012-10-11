@@ -4,12 +4,14 @@ use Test::Compile;
 my @modules = all_pm_files();
 
 eval { require SVN::Fs; 1 } or do {
-    warn "SVN::Fs unavailable, skipping compilation test of App::KGB::Client::Subversion\n";
+    diag $@;
+    diag "SVN::Fs unavailable, skipping compilation test of App::KGB::Client::Subversion";
     @modules = grep { $_ !~ m,App/KGB/Client/Subversion.pm$, } @modules;
 };
 
 eval { require Git; 1 } or do {
-    warn "Git unavailable, skipping compilation test of App::KGB::Client::Git\n";
+    diag $@;
+    diag "Git unavailable, skipping compilation test of App::KGB::Client::Git";
     @modules = grep { $_ !~ m,App/KGB/Client/Git.pm$, } @modules;
 };
 

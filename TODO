@@ -1,2 +1,3 @@
 * split kgb-bot into manageable modules
 * start a real test bot for automated tests
+* write tests for CVS client

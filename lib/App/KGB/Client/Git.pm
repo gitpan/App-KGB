@@ -34,9 +34,9 @@ use IPC::Run;
 
 =head1 NAME
 
-App::KGB::Client::Git - Git supprot for KGB client
+App::KGB::Client::Git - Git support for KGB client
 
-=head1 SYNOPSYS
+=head1 SYNOPSIS
 
 my $c = App::KGB::Client::Git->new({
     ...
@@ -228,7 +228,7 @@ sub _detect_commits {
 sub _exists {
     my ( $self, $obj ) = @_;
 
-    # we resort to runing 'git cat-file' ourselves as the Git wrapper doesn't
+    # we resort to running 'git cat-file' ourselves as the Git wrapper doesn't
     # provide an easy way to do so without polluting STDERR in case the object
     # doesn't exist
     #
@@ -605,7 +605,7 @@ EOF
 
 Copyright (c) 2009 Damyan Ivanov
 
-Based on the shell post-recieve hook by Andy Parkins
+Based on the shell post-receive hook by Andy Parkins
 
 This file is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software

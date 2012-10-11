@@ -20,23 +20,33 @@
 
 use strict;
 use warnings;
+use autodie;
 
 use Getopt::Long;
 use Pod::Usage;
 use YAML qw(LoadFile DumpFile Bless);
 
 my $file = '/etc/kgb-bot/kgb.conf';
-my $net = 'oftc';
+my $dir  = '/etc/kgb-bot/kgb.conf.d';
+my $net  = 'oftc';
+my $save = 0;
 
 
 GetOptions(
     'file=s'        => \$file,
+    'dir=s'         => \$dir,
     'net|network=s' => \$net,
+    'save|write!'   => \$save,
 ) or pod2usage( { -verbose => 1 } );
 
 @ARGV == 3 or pod2usage();
 
 my $yaml = LoadFile($file);
+my $networks = $yaml->{networks};
+
+if ( $dir and -d $dir ) {
+    $yaml = {};
+}
 
 my ( $prj, $chan, $pwd ) = @ARGV;
 
@@ -47,7 +57,7 @@ unless ( $chan =~ /^[#&+]/ ) {
     $chan = "#$chan";
 }
 
-unless ( exists $yaml->{networks}{$net} ) {
+unless ( exists $networks->{$net} ) {
     warn "W: Network '$net' missing on configuration file.\n";
 }
 
@@ -66,7 +76,20 @@ Bless($yaml)->keys(
     ]
 );
 
-print YAML::Dump($yaml);
+foreach ( @{ $yaml->{channels} } ) {
+    Bless($_)->keys(
+        [ sort { $a ne 'name' } keys %$_ ]
+    );
+}
+
+my $outfh = \*STDOUT;
+if ($save) {
+    if ( $dir and -d $dir ) {
+        $file = File::Spec->catdir($dir, "$prj.conf");
+    }
+    open( $outfh, '>', $file );
+}
+print $outfh YAML::Dump($yaml);
 
 __END__
 
@@ -76,12 +99,12 @@ kgb-add-project - helper script for adding new projects to kgb-bot configuration
 
 =head1 SYNOPSIS
 
-B<kgb-add-project> [--file configfile] [--net|--networks ircnetwork] project-id ircchannel password
+B<kgb-add-project> [--file configfile] [--net|--networks ircnetwork] [--save|--write] project-id ircchannel password
 
 =head1 DESCRIPTION
 
 B<kgb-add-project> allows one to add new projects to B<kgb-bot>'s configuration
-file from the command line. It writes the new config to stdout.
+file from the command line. It writes the new config to stdout unless I<--save|--write> is given.
 
 =head1 ARGUMENTS
 
@@ -94,6 +117,10 @@ Optional. Defaults to F</etc/kgb-bot/kgb.conf>.
 =item B<--net|network> ircnetwork
 
 Optional. Defaults to B<oftc>. Needs to be in the I<networks> section of the configuration file.
+
+=item B<--save|--write>
+
+Optional. Write new config back to file instead of stdout.
 
 =item B<project-id>
 
