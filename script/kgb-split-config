@@ -1,8 +1,9 @@
+#!/usr/bin/perl
 # vim: ts=4:sw=4:et:ai:sts=4
 #
 # KGB - an IRC bot helping collaboration
-# Copyright © 2008 Martín Ferrari
-# Copyright © 2009 Damyan Ivanov
+# Copyright © 2012 Damyan Ivanov
+# Copyright © 2012 gregor herrmann
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -18,75 +19,53 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-package App::KGB;
-
 use strict;
 use warnings;
+use 5.010;
+use autodie;
 
-=encoding UTF-8
+use YAML qw(LoadFile DumpFile);
+use File::Spec;
+
+no warnings 'once';
+local $YAML::SortKeys = [qw(repositories channels)];
+use warnings;
+
+my $file = '/etc/kgb-bot/kgb.conf';
+my $dir  = '/etc/kgb-bot/kgb.conf.d';
+
+my $yaml = LoadFile($file);
+
+foreach my $repo ( keys %{ $yaml->{repositories} } ) {
+    my $splitconfig = {};
+    $splitconfig->{repositories}->{$repo} = $yaml->{repositories}->{$repo};
+    foreach my $channel ( @{ $yaml->{channels} } ) {
+        push @{ $splitconfig->{channels} }, $channel
+            if $repo ~~ @{ $channel->{repos} };
+    }
+    my $outfile = File::Spec->catdir( $dir, "$repo.conf" );
+    DumpFile( $outfile, $splitconfig );
+}
+
+__END__
 
 =head1 NAME
 
-App::KGB - collaborative IRC helper
+kgb-split-config - helper script for splitting out project configurations
 
-=cut
+=head1 SYNOPSIS
 
-our $VERSION = '1.22';
+B<kgb-split-config>
 
 =head1 DESCRIPTION
 
-B<App::KGB> is a helper aimed at people working together using version control
-systems and IRC. It has two parts:
+B<kgb-split-config> extracts project configurations from F</etc/kgb-bot/kgb.conf> and
+dumps them as separate files into F</etc/kgb-bot/kgb.conf.d/>.
 
-=over
+=head1 COPYRIGHT AND LICENSE
 
-=item server, L<kgb-bot(1)>
-
-A daemon listening for commit notifications that relays them to IRC.
-
-=item client, L<kgb-client(1)>, L<App::KGB::Client>
-
-Hooks into the version control system and sends commit notifications to the
-daemon.
-
-=back
-
-=head2 SUPPORTED VERSION CONTROL SYSTEMS
-
-=over
-
-=item Git
-
-=item Subversion
-
-=back
-
-=head1 SEE ALSO
-
-=over
-
-=item L<kgb-client(1)>
-
-=item L<App::KGB::Client>
-
-=item L<kgb-bot(1)>
-
-=back
-
-=head1 AUTHOR
-
-=over
-
-=item Martin Ferrari L<tincho@debian.org>
-
-=item Damyan Ivanov L<dmn@debian.org>
-
-=back
-
-=head1 LICENSE
-
-Copyright (C) 2008 Martín Ferrari
-Copyright (C) 2008-2009 Damyan Ivanov
+Copyright (C) 2012 Damyan Ivanov
+Copyright (C) 2012 gregor herrmann
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -103,5 +82,3 @@ this program; if not, write to the Free Software Foundation, Inc., 51
 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 =cut
-
-1;

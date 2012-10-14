@@ -71,12 +71,12 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.21';
+our $VERSION = '1.22';
 
 use Cwd;
 
 our $config;
-our ( $config_file, $config_dir );
+our ( $config_file, $config_dir, $foreground );
 our %const = (
     SOAPsvc => "SOAPServer",
     BAsvc   => "BotAddressed",
@@ -163,13 +163,21 @@ sub read_conf ($$) {
     my $file = shift;
     my $dir  = shift;
 
+    die "$file is world-readable\n" if ( stat($file) )[2] & 04;
+
     my $conf;
+    KGB->debug("Loading '$file'.");
     $conf = YAML::LoadFile($file)
         or die "Error loading config from $file\n"
         if -e $file;
 
     if ( defined($dir) and length($dir) and -e $dir ) {
+        -d $dir or die "'$dir' is not a directory\n";
+        -r $dir or die "'$dir' is not readable\n";
+        -x $dir or die "'$dir' is not usable (missing execute permission)\n";
         for ( sort <$dir/*.conf> ) {
+            die "$_ is world-readable\n" if ( stat($_) )[2] & 04;
+            KGB->debug("Loading '$_'.");
             my $c = YAML::LoadFile($_) or die "Error loading $_\n";
 
             eval { merge_conf_hash( $conf, $c ); 1 } or die "Error loading $_: $@";
@@ -332,9 +340,6 @@ sub open_log {
         open( STDERR, ">", "/dev/null" )
             or die "Error closing stderr: $!\n";
     }
-
-    binmode(STDOUT, ':utf8');
-    binmode(STDERR, ':utf8');
 }
 
 package KGB::POE;
@@ -434,7 +439,10 @@ sub reloadhandler {
     # reopen log file
     # we catch any exceptions, because we don't want reloading to be able
     # to kill the server
-    KGB->out("Error re-openning logs: $@\n") unless eval { KGB::open_log(); 1 };
+    unless ($KGB::foreground) {
+        KGB->out("Error re-openning logs: $@\n")
+            unless eval { KGB::open_log(); 1 };
+    }
 
     # Reload successful
     $kernel->yield("_irc_reconnect");
@@ -455,6 +463,7 @@ use Error ':try';
 
 our %color_codes = (
     bold      => "\002",     # ^B
+    normal    => "\017",     # ^O
     underline => "\037",     # ^_
     reverse   => "\026",     # ^V
     black     => "\00301",
@@ -579,7 +588,8 @@ sub do_commit_msg {
 
     if ( 1 == @log and length($log[0]) <= 80 ) {
         $string[0] .= ' ' . colorize( separator => '*' ) . ' ' . $log[0];
-        $string[0] .= " ($web_string)" if defined($web_string);
+        $string[0] .= ' ' . colorize( separator => '/' ) . ' ' . $web_string
+            if defined($web_string);
     }
     else {
         push @string, @log;
@@ -1106,6 +1116,10 @@ sub irc_new_hash {
 sub irc_notify {
     my ( $kernel, $heap, $chan, $str ) = @_[ KERNEL, HEAP, ARG0, ARG1 ];
 
+    # put some hidden character to avoid addressing anyone
+    my $safety = $color_codes{normal};
+    $_ = "$safety$_" for @$str;
+
     my $part = substr( $str->[0], 0, 100 );
     utf8::encode($part);
     my $hash = md5_hex( $chan, $part );
@@ -1125,9 +1139,11 @@ sub irc_notify {
 
 sub reply {
     my ( $kernel, $net, $chan, $nick, $msg ) = @_;
+    # put some hidden character to avoid addressing anyone
+    my $safety = $color_codes{normal};
     return $chan
-        ? $kernel->post( "irc_$net" => privmsg => $chan => "$nick: $msg" )
-        : $kernel->post( "irc_$net" => privmsg => $nick => $msg );
+        ? $kernel->post( "irc_$net" => privmsg => $chan => "$safety$nick: $msg" )
+        : $kernel->post( "irc_$net" => privmsg => $nick => "$safety$msg" );
 }
 
 sub irc_command {
@@ -1331,17 +1347,18 @@ use Proc::PID::File;
 
 KGB::save_progname();
 $KGB::out = \*STDERR;
+binmode( $KGB::out, ':utf8' );
 
 my $conf_file  = '/etc/kgb-bot/kgb.conf';
 my $conf_dir   = '/etc/kgb-bot/kgb.conf.d';
-my $foreground = 0;
+$KGB::foreground = 0;
 $KGB::simulate = 0;
 
 Getopt::Long::Configure("bundling");
 GetOptions(
     'c|config=s'   => \$conf_file,
     'cd|config-dir=s' => \$conf_dir,
-    'f|foreground' => \$foreground,
+    'f|foreground' => \$KGB::foreground,
     'simulate=s'    => \$KGB::simulate,
 ) or die 'Invalid parameters';
 
@@ -1352,7 +1369,7 @@ KGB::load_conf( $conf_file, $conf_dir );
 use Cwd;
 $KGB::simulate = Cwd::realpath($KGB::simulate) if $KGB::simulate;
 
-unless ($foreground) {
+unless ($KGB::foreground) {
     pipe IN, OUT or die "pipe: $!\n";
     my $pid = fork();
     die "Can't fork: $!" unless ( defined $pid );
@@ -1438,7 +1455,9 @@ POE::Session->create(
 
 $poe_kernel->run;
 if ($KGB::restart) {
-    exec( $KGB::progname, '--foreground', '--config', $KGB::config_file )
-        or die "couldn't re-exec: $!\ņ";
+    exec( $KGB::progname, '--foreground',
+        '--config'     => $KGB::config_file,
+        '--config-dir' => $KGB::config_dir
+    ) or die "couldn't re-exec: $!\ņ";
 }
 exit 0;

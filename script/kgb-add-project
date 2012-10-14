@@ -99,7 +99,7 @@ kgb-add-project - helper script for adding new projects to kgb-bot configuration
 
 =head1 SYNOPSIS
 
-B<kgb-add-project> [--file configfile] [--net|--networks ircnetwork] [--save|--write] project-id ircchannel password
+B<kgb-add-project> [--file configfile] [--dir configdir] [--net|--networks ircnetwork] [--save|--write] project-id ircchannel password
 
 =head1 DESCRIPTION
 
@@ -113,6 +113,11 @@ file from the command line. It writes the new config to stdout unless I<--save|-
 =item B<--file> configfile
 
 Optional. Defaults to F</etc/kgb-bot/kgb.conf>.
+
+=item B<--dir> configdir
+
+Optional. Defaults to F</etc/kgb-bot/kgb.conf.d/>.
+Used for writing config snippets for projects with B<--save|--write>.
 
 =item B<--net|network> ircnetwork
 

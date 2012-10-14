@@ -1,3 +1,15 @@
+1.22 (2012-10-14)
+  * kgb-add-project: document the new --dir option
+  * Add API documentation (JSON-RPC only)
+  * Server:
+    + prepend all IRC strings with a hidden character to avoid addressing
+    + honour --foreground when reloading and don't reopen the log
+    + change the delimiters around web links to make konsole users' life
+      easier
+    + pass --config-dir too on restart
+    + add new kgb-split-config script
+    + refuse to load world-readable configuration files
+  * fix a bug in determining the longest common directory in a change set
 1.21 (2012-10-11)
  * Server:
   + fix exception handling

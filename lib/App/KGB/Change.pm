@@ -215,7 +215,7 @@ sub detect_common_dir {
     # "foo/bar (42 files changed)"
 
     for my $dirpath ( keys %most_dirs ) {
-        if (   $max <= $most_dirs{$dirpath}
+        if (   $max < $most_dirs{$dirpath}
             or $max == $most_dirs{$dirpath}
             and length($topdir) < length($dirpath) )
         {

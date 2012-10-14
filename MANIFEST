@@ -14,6 +14,7 @@ eg/test-server-1.conf.d/repos.conf
 eg/test-server-2.conf
 etc/kgb.conf
 lib/App/KGB.pm
+lib/App/KGB/API.pm
 lib/App/KGB/Change.pm
 lib/App/KGB/Client.pm
 lib/App/KGB/Client/CVS.pm
@@ -33,6 +34,7 @@ privinc/My/Builder.pm
 script/kgb-add-project
 script/kgb-bot
 script/kgb-client
+script/kgb-split-config
 t/00-compile.t
 t/00-compile_scripts.t
 t/00-compile_shell_scripts.t

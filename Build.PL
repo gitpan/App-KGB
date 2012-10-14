@@ -27,12 +27,15 @@ my $builder = My::Builder->new(
         'File::Touch'                  => 0,
         'Git'                          => 0,
         'IPC::System::Simple'          => 0,
+        'JSON'                         => 0,
+        'JSON::RPC'                    => 0,
         'POE::Component::IRC'          => '5.56',
         'POE::Component::Server::SOAP' => 0,
         'POE'                          => 0,
         'Proc::PID::File'              => 0,
         'Schedule::RateLimiter'        => 0,
         'SOAP::Lite'                   => 0,
+        'WWW::Shorten'                 => 0,
 # these barf with M::B in perl 5.12[.1] and version.pm available
 # we comment themm here as a workaround
 # see http://bugs.debian.org/582739 and http://bugs.debian.org/589812
@@ -47,8 +50,9 @@ my $builder = My::Builder->new(
         etc  => 'etc'
     },
     sbin_files => {
-        'script/kgb-bot'         => 'sbin/kgb-bot',
-        'script/kgb-add-project' => 'sbin/kgb-add-project'
+        'script/kgb-bot'          => 'sbin/kgb-bot',
+        'script/kgb-add-project'  => 'sbin/kgb-add-project',
+        'script/kgb-split-config' => 'sbin/kgb-split-config',
     },
     etc_files => { 'etc/kgb.conf' => 'etc/kgb-bot/kgb.conf' },
     script_files => [ 'script/kgb-client' ],

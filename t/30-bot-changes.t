@@ -1,4 +1,4 @@
-use Test::More tests => 2;
+use Test::More tests => 3;
 
 use App::KGB::Change;
 
@@ -14,3 +14,4 @@ sub is_common_dir {
 
 is_common_dir( [ '(A)foo/bar', '(A)foo/dar', '(A)foo/bar/dar' ], 'foo' );
 is_common_dir( [ '(A)debian/patches/series', '(A)debian/patches/moo.patch' ], 'debian/patches' );
+is_common_dir( [ 'trunk/packages/po/sublevel4/vi.po', 'trunk/packages/po/sublevel3/vi.po' ], 'trunk/packages/po' );

@@ -42,12 +42,15 @@
             "File::Touch" : "0",
             "Git" : "0",
             "IPC::System::Simple" : "0",
+            "JSON" : "0",
+            "JSON::RPC" : "0",
             "POE" : "0",
             "POE::Component::IRC" : "5.56",
             "POE::Component::Server::SOAP" : "0",
             "Proc::PID::File" : "0",
             "SOAP::Lite" : "0",
             "Schedule::RateLimiter" : "0",
+            "WWW::Shorten" : "0",
             "YAML" : "0",
             "perl" : "5.010"
          }
@@ -56,7 +59,11 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.21"
+         "version" : "1.22"
+      },
+      "App::KGB::API" : {
+         "file" : "lib/App/KGB/API.pm",
+         "version" : 0
       },
       "App::KGB::Change" : {
          "file" : "lib/App/KGB/Change.pm",
@@ -105,5 +112,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
       ]
    },
-   "version" : "1.21"
+   "version" : "1.22"
 }
