@@ -58,15 +58,10 @@ kgb-client - relay commits to KGB servers
 
 =head1 DESCRIPTION
 
-B<kgb-client> is the client counterpart of L<kgb-bot(1)>. It is intended to be used as
-a hook in your version control system, executed after the repository gets
-updated. It analyzes the commit(s) and then relays the information about the
-repository, branch, author, modified files and change log to the KGB server,
-which will show it on IRC.
-
-If invoked with the B<--fake> option, B<kgb-client> will send a fake commit to
-the servers. This is useful for testing client-server communication
-independently from VCS setup.
+B<kgb-client> is the client counterpart of L<kgb-bot(1)>. It is intended to be
+used as a hook in your version control system, executed after the repository
+gets updated. It analyzes the commit(s) and then relays the information to the
+KGB server, which will show it on IRC.
 
 =head1 CONFIGURATION
 
@@ -78,224 +73,40 @@ Specifies the path to kgb-client configuration file.
 
 =back
 
-Configuration options (except B<--conf> and B<--fake>) may be specified both in the
-configuration file and on the command line. Usually you want to have all the
+Configuration options (except B<--conf>, B<--fake> and B<--relay-msg>) may be
+specified both in the configuration file and on the command line. Usually you
+want to have all the
 options in a configuration file, because having passwords on the command line
 is insecure. The configuration file also gives more control, for example it
 supports multiple servers and multiple ways of detection of branch and module
 names.
 
-The configuration file is in L<YAML> format. Unless noted otherwise, all the
-options below can be used on the command line if prepended with two dashes. An
-example configuration file is shipped with the distribution.
-
-=over
-
-=item B<repository> I<type>
-
-Specifies the type of the repository B<kgb-client> shall be working with.
-The default is determined as follows:
-
-=over
-
-=item If both C<GIT_DIR> and C<CVSROOT> are present in the environment, the
-script terminates complaining.
-
-=item If only C<GIT_DIR> or C<CVSROOT> is present in the environment, the
-default is correspondingly Git or CVS.
-
-=item If neither C<GIT_DIR> nor C<CVSROOT> is present, the default is
-Subversion.
-
-=back
-
-=item B<repo-id> I<repository name>
-
-Short repository identifier. Will be used for identifying the repository to the
-KGB daemon, which will also use this for IRC notifications. B<Mandatory>.
-
-=item B<uri> I<URI>
-
-URI of the KGB server. Something like C<http://some.server:port>. B<Mandatory>.
-
-=item B<proxy> I<URI>
-
-URI of the SOAP proxy. If not given, it is the value of the B<uri> option, with
-C<?session=KGB> added.
-
-=item B<password> I<password>
-
-Password for authentication to the KGB server.
-
-=item B<timeout> I<seconds>
-
-Timeout for server communication. Default is 15 seconds, as we want instant IRC
-and commit response.
-
-=item B<servers>
-
-Only available in the configuration file.
-
-An array of servers, each described using B<uri>, B<proxy>, B<password> and
-B<timeout> options. When several servers are configured, B<kgb-client> chooses
-one randomly. If a given server times out or there is another problem with
-communication, B<kgb-client> tries another server.
-
-The top-level B<uri>, B<proxy>, B<password> and B<timeout> options are treated
-as describing an extra server to the servers described in B<servers> array.
-
-The B<password> and B<timeout> options default too the top-level options of the
-same name.
-
-=item B<single-line-commits> I<off|forced|auto>
-
-Request different modes of commit message processing:
-
-=over
-
-=item I<off>
-
-No processing is done. The commit message is printed as was given, with each
-line in a separate IRC message, blank lines omitted. This is the only possible
-behaviour in versions before 1.14.
-
-=item I<forced>
-
-Only the first line is sent to IRC, regardless of whether it is followed by a
-blank line or not.
-
-=item I<auto>
-
-If the first line is followed by an empty line, only the first line is sent to
-IRC and the rest is ignored. This is the default since version 1.14.
-
-=back
-
-=item B<status-dir> I<directory>
-
-With this option, B<kgb-client> tries to contact the last server that was
-successfully contacted first. The directory is used to store the information
-about the last contacted server.
-
-=item B<verbose>
-
-Makes the whole process more verbose.
-
-=item B<module> I<string>
-
-For Git repositories, the default value for module is taken to be the last path
-component of GIT_DIR environment variable, with trailing C<.git> removed.
-
-See also the B<branch-and-module-re> setting, useful for multi-project
-repositories.
-
-=item B<web-link> I<template>
-
-Passes a web link to the server, who would make it appear in the notification.
-The following items in I<template> are expanded before sending.
-
-=over
-
-=item ${branch}
-
-The branch of the commit, as determined by the I<branch-and-module-re> regular
-expressions, see L<Branches and modules>.
-
-=item ${module}
-
-The module as determined by the I<branch-and-module-re> regular expressions,
-see L<Branches and modules>.
-
-=item ${commit}
-
-The commit ID (revision number for Subversion, short commit hash for Git).
-
-=back
-
-Examples:
-
- http://git.debian.org/?p=pkg-firebird/2.5.git;a=commitdiff;h=${commit}
-
- http://git.debian.org/?p=pkg-perl/packages/${module}.git;a=commitdiff;h=${commit}
-
- http://svn.debian.org/viewvc/kgb?view=revision&revision=${commit}
-
-=item B<short-url-service> I<service>
-
-Makes sense only if B<web-link> is also used. Uses the specified I<service> of
-L<WWW::Shorten> to shorten the link. See the manual of L<WWW::Shorten> for the
-list of supported services.
-
-=back
-
-=head2 Branches and modules
-
-Sometimes development is done in multiple branches. Sometimes, a project
-consists of multiple sub-projects or modules. It is nice to have the module and
-branch highlighted in notifications. There are two options to help determining
-the module and branch names from a list of changes.
-
-These options are mainly useful when using Subversion. Git commits carry
-implicit branch information and chances are that sub-projects use separate Git
-repositories.
-
-=over
-
-=item B<branch-and-module-re>
-
-A list of regular expressions that serve for detection of branch and module of
-commits. Each item from the list is tried in turn, until an item is found that
-matches all the paths that were modified by the commit. Regular expressions
-must have two captures: the first one giving the branch name, and the second
-one giving the module name.
-
-All the paths that were modified by the commit must resolve to the same branch
-and module in order for the branch and module to be transmitted to the KGB
-server.
-
-Hint: use () to match empty branch or module if the concept is not applicable.
-Like:
-
-    branch-and-module-re:
-        - "^/(trunk)/([^/]+)/"
-        - "^()/(website)/"
-    # either a sub-project in /trunk/<subproject>
-    # or a file in the website, which is matched like a module
-
-=item B<branch-and-module-re-swap> I<1>
-
-If you can only provide the module name in the first capture and the branch
-name in the second, use this option to signal the fact to B<kgb-client>. The
-setting is in effect for all patterns.
-
-    branch-and-module-re-swap: 1
-    branch-and-module-re:
-        - "^/([^/]+)/(trunk|tags)/"
-        - "^/(website)/()"
-    # either a sub-project in /<subproject>
-    # or a file in the website, which is matched like a module
-
-=item B<module> I<name>
-
-In the case of sub-projects that use separate Git repositories, you may want to
-use explicit module name. Having this on the command line would allow for all
-the sub-project to share the configuration file (same B<repo-id>) while still
-having sub-project-specific notifications.
-
-=back
+See L<kgb-client.conf(5)> for available configuration options. Unless noted
+otherwise, all the options in the configuration file can also be used on
+command line, prefixing them with two dashes. E.g. C<repo-id> becomes
+C<--repo-id>
+
+=head1 FAKE COMMIT MODE
+
+If invoked with the B<--fake> option, B<kgb-client> will send a fake commit to
+the servers. This is useful for testing client-server communication
+independently from VCS setup.
 
 =head1 MESSAGE RELAY MODE
 
 When the B<--relay-msg> option is given, there is no repository to be
-inspected. Instead, the remaining command line arguments are passed verbatim to
-the bot to display on IRC. This can be used for real-time notification about
+inspected. Instead, the non-option command line arguments are passed verbatim
+to the bot to display on IRC. This can be used for real-time notification about
 other events like bug submissions etc.
 
 =head1 SUPPORTED VERSION CONTROL SYSTEMS
 
 =head2 Subversion
 
-Installation requires calling B<kgb-client> with two command line arguments:
+Installation requires calling B<kgb-client> with two command line arguments,
+like this:
+
+    /path/to/kgb-client "$REPOS" "$REV"
 
 =over
 
@@ -333,11 +144,13 @@ directory in which the changes are being made.
 
 For example:
 
-    ALL /path/to/kgb-client --repository cvs ... "$CVSROOT" "%p"
+    ALL /path/to/kgb-client --conf /path/to.conf ... "$CVSROOT" "%p"
 
 =head1 SEE ALSO
 
 =over
+
+=item L<kgb-client.conf(5)>
 
 =item L<App::KGB::Client>
 
@@ -357,7 +170,7 @@ use YAML ();
 
 my ($conf_file,      $uri,        $proxy,
     $repo_id,        $password,   $timeout,
-    $verbose,        $repo_type,  @br_mod_re,
+    $verbose,        $repo_type,  @br_mod_re, @mod_br_re,
     $br_mod_re_swap, $module,     $ignore_branch,
     @servers,        $git_reflog, $single_line_commits,
     $status_dir,     $web_link,   $short_url_service,
@@ -372,8 +185,9 @@ GetOptions(
     'timeout=s'                  => \$timeout,
     'branch-and-module-re=s'     => \@br_mod_re,
     'br-mod-re=s'                => \@br_mod_re,
+    'module-and-branch-re=s'     => \@mod_br_re,
+    'mod-br-re=s'                => \@mod_br_re,
     'branch-and-module-re-swap!' => \$br_mod_re_swap,
-    'br-mod-re!'                 => \$br_mod_re_swap,
     'module=s'                   => \$module,
     'ignore-branch=s'            => \$ignore_branch,
     'repository=s'               => \$repo_type,
@@ -400,7 +214,13 @@ if( $conf_file )
     $timeout  ||= $conf->{timeout};
     @br_mod_re = @{ $conf->{'branch-and-module-re'} }
         if !@br_mod_re and $conf->{'branch-and-module-re'};
+    @mod_br_re = @{ $conf->{'module-and-branch-re'} }
+        if !@mod_br_re and $conf->{'module-and-branch-re'};
     $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
+    if ( $br_mod_re_swap ) {
+        push @mod_br_re, @br_mod_re;
+        @br_mod_re = ();
+    }
     $ignore_branch //= $conf->{'ignore-branch'};
     $module //= $conf->{module};
     $repo_type //= $conf->{repository};
@@ -481,7 +301,7 @@ my @client_args = (
     repo_id             => $repo_id,
     servers             => \@servers,
     br_mod_re           => \@br_mod_re,
-    br_mod_re_swap      => $br_mod_re_swap,
+    mod_br_re           => \@mod_br_re,
     module              => $module,
     ignore_branch       => $ignore_branch,
     verbose             => $verbose,

@@ -26,5 +26,48 @@ sub ACTION_orig {
     print "with $target_dist linked to it.\n";
 }
 
+use Config;
+use File::Spec;
+use File::Copy;
+use Pod::Man;
+
+sub process_man_files {
+    my $self = shift;
+
+    for my $s ( 1 .. 9 ) {
+        $self->install_path( "man$s", "/usr/share/man/man$s" )
+            unless defined $self->install_path("man$s");
+
+        my $dir = File::Spec->catdir( 'blib', "man$s" );
+        my $files = $self->{"man${s}files"} // "man$s/*";
+        $files = [$files] unless ref($files);
+        ref($files) eq 'ARRAY' or die "man${s}files is not scalar/arayref";
+
+        my $manner = Pod::Man->new( section => "${s}p" );
+        my $man_ext = $Config{"man${s}ext"};
+        unless ( defined($man_ext) ) {
+            $man_ext = $Config{man1ext};
+            $man_ext =~ s/1/$s/;
+        }
+
+        for my $pat (@$files) {
+            for my $f ( glob($pat) ) {
+                -d $dir or mkdir $dir;
+
+                if ( $f =~ /\.(p|p$s)$/ ) {
+                    copy( $pat, $dir );
+                }
+                elsif ( $f =~ /\.pod$/ ) {
+
+                    my $manf = File::Spec->splitpath($f);
+                    $manf =~ s/\.pod$/".$man_ext"/e;
+                    $manner->parse_from_file( $f,
+                        File::Spec->catfile( $dir, $manf ) );
+                }
+            }
+        }
+    }
+}
+
 1;
 

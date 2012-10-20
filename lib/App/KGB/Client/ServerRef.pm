@@ -147,6 +147,7 @@ __PACKAGE__->mk_accessors( qw( uri proxy password timeout verbose ) );
 use utf8;
 use Carp qw(confess);
 use Digest::SHA qw(sha1_hex);
+use YAML ();
 
 sub new {
     my $self = shift->SUPER::new( @_ );
@@ -223,8 +224,7 @@ sub send_changes {
 
     if ( $self->verbose ) {
         print "About to contact ", $self->proxy, "\n";
-        print "Changes:\n";
-        print "  $_\n" for @commit_changes;
+        print "Commit: ", YAML::Dump($info), "\n";
     }
 
     $self->$meth($info);

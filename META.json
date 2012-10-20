@@ -59,7 +59,7 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.22"
+         "version" : "1.23"
       },
       "App::KGB::API" : {
          "file" : "lib/App/KGB/API.pm",
@@ -112,5 +112,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt"
       ]
    },
-   "version" : "1.22"
+   "version" : "1.23"
 }

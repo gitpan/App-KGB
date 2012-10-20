@@ -82,7 +82,7 @@ Subversion revision, Git hash or just empty (for CVS).
 
 A list of changes, encoded as strings. It is simple file name prepended with
 C<(A)> for added, C<(M)> (or nothing) for modified and C<(D)> for deleted. See
-L<App::KGB::Changes>.
+L<App::KGB::Change>.
 
 =item commit_log I<log message>
 

@@ -1,3 +1,21 @@
+1.23 (2012-10-20)
+  * t/compile*: use Test::Compile::Internal in order to show verbose errors
+  * Server:
+    + add --debug command line switch
+    + replace --config-dir option with 'include:' configuration item
+      add 'include: "/etc/kgb-bot/kgb.conf.d"' to the default config
+    + default pid_dir to /var/run/kgb-bot
+  * Documentation:
+    + add manuals for kgb.conf and kgb-client.conf
+    + pod.t: test documentation in man*/ too
+    + give example for gitweb URL
+  * Client:
+    + show expanded web-link in verbose mode
+    + dump processed configuration in verbose mode
+    + shorten_url: really return plain URL if shortening is not enabled
+    + send_changes: detailed dump in verbose mode
+    + introduce module-and-branch-re setting and deprecate
+      branch-and-module-re-swap
 1.22 (2012-10-14)
   * kgb-add-project: document the new --dir option
   * Add API documentation (JSON-RPC only)

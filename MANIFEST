@@ -26,6 +26,8 @@ lib/App/KGB/Client/Subversion.pm
 lib/App/KGB/Commit.pm
 lib/WWW/Shorten/Debli.pm
 Makefile
+man5/kgb-client.conf.pod
+man5/kgb.conf.pod
 MANIFEST			This list of files
 MANIFEST.SKIP
 META.json

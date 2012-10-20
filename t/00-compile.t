@@ -1,20 +1,24 @@
 use Test::More;
-use Test::Compile;
+use Test::Compile::Internal;
 
-my @modules = all_pm_files();
+my $t = Test::Compile::Internal->new(verbose=>1);
+
+my @modules = $t->all_pm_files();
 
 eval { require SVN::Fs; 1 } or do {
-    diag $@;
-    diag "SVN::Fs unavailable, skipping compilation test of App::KGB::Client::Subversion";
+    $t->diag($@);
+    $t->diag("SVN::Fs unavailable, skipping compilation test of App::KGB::Client::Subversion");
     @modules = grep { $_ !~ m,App/KGB/Client/Subversion.pm$, } @modules;
 };
 
 eval { require Git; 1 } or do {
-    diag $@;
-    diag "Git unavailable, skipping compilation test of App::KGB::Client::Git";
+    $t->diag($@);
+    $t->diag("Git unavailable, skipping compilation test of App::KGB::Client::Git");
     @modules = grep { $_ !~ m,App/KGB/Client/Git.pm$, } @modules;
 };
 
-pm_file_ok($_) for @modules;
+$t->plan( tests => scalar(@modules) );
 
-done_testing();
+$t->ok( $t->pm_file_compiles($_), "$_ compiles" ) for @modules;
+
+$t->done_testing();

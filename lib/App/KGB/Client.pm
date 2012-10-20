@@ -96,13 +96,17 @@ All the paths that were modified by the commit must resolve to the same branch
 and module in order for the branch and module to be transmitted to the KGB
 server.
 
-    Example: ([^/]+)/([^/]+)/
-             # branch/module
+    Example: ^/(trunk)/([^/]+)/
+             # /trunk/module/file
+             ^/branches/([^/]+)/([^/]+)/
+             # /branches/test/module/file
 
-=item B<br_mod_re_swap> I<1>
+=item B<mod_br_re>
 
-If you can only provide the module name in the first capture and the branch
-name in the second, use this option to signal the fact to B<kgb-client>.
+Same as B<br_mod_re>, but captures module name first and branch name second.
+
+    Example: ^/branches/([^/]+)/([^/]+)/
+             # /branches/test/module/file
 
 =item B<ignore_branch>
 
@@ -193,9 +197,10 @@ use DirHandle ();
 use SOAP::Lite;
 use Getopt::Long;
 use List::Util ();
+use YAML ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
-    qw( repo_id servers br_mod_re br_mod_re_swap module ignore_branch
+    qw( repo_id servers br_mod_re mod_br_re module ignore_branch
         single_line_commits status_dir verbose protocol
         web_link short_url_service _last_server )
 );
@@ -219,10 +224,16 @@ See L<|FIELDS> above.
 
 sub new {
     my $self = shift->SUPER::new(@_);
+
+    print "Configuration: " . YAML::Dump(@_) if $self->verbose;
+
     defined( $self->repo_id )
         or confess "'repo_id' is mandatory";
-    $self->br_mod_re( [ $self->br_mod_re ] )
-        if $self->br_mod_re and not ref( $self->br_mod_re );
+    $self->br_mod_re( [ $self->br_mod_re // () ] )
+        if not ref( $self->br_mod_re );
+    $self->mod_br_re( [ $self->mod_br_re // () ] )
+        if not ref( $self->mod_br_re );
+
     $self->servers( [] ) unless defined( $self->servers );
 
     ref( $self->servers ) and ref( $self->servers ) eq 'ARRAY'
@@ -253,12 +264,31 @@ sub new {
 =item detect_branch_and_module ( $changes )
 
 Given a set of changes (an arrayref of L<App::KGB::Change> objects), runs all
-the regular expressions as listed in B<br_mod_re> and if a regular expression
-that matches all the changed paths and returns the branch and module.
+the regular expressions as listed in B<br_mod_re> and B<mod_br_re> and if a
+regular expression that matches all the changed paths and returns the branch
+and module.
 
     ( $branch, $module ) = $client->detect_branch_and_module($changes);
 
 =cut
+
+sub _run_matches {
+    my ( $safe, $changes, $res, $swap ) = @_;
+
+    for my $re (@$res) {
+        $re =~ s{,}{\\,}g;    # escape commas
+        my $matching = "m,$re,; " . ( $swap ? '($2,$1)' : '($1,$2)' );
+
+        local $_ = $changes->path;
+        my ( $branch, $module ) = $safe->reval($matching);
+        die "Error while evaluating `$re': $@" if $@;
+
+        if ( defined($branch) and defined($module) ) {
+            return ( $re, $branch, $module );
+        }
+    }
+    return ( undef, undef, undef );
+}
 
 sub detect_branch_and_module {
     my ( $self, $changes ) = @_;
@@ -278,20 +308,13 @@ sub detect_branch_and_module {
     for my $c (@$changes) {
         my ( $change_branch, $change_module );
 
-        for my $re ( @{ $self->br_mod_re } ) {
-            $re =~ s{,}{\\,}g;    # escape commas
-            my $matching = "m,$re,; "
-                . ( $self->br_mod_re_swap ? '($2,$1)' : '($1,$2)' );
-
-            $_ = $c->path;
-            ( $change_branch, $change_module ) = $safe->reval($matching);
-            die "Error while evaluating `$re': $@" if $@;
-
-            if ( defined($change_branch) and defined($change_module) ) {
-                $matched_re = $re;
-                last;
-            }
-        }
+        ( $matched_re, $change_branch, $change_module )
+            = _run_matches( $safe, $c, $self->br_mod_re, 0 );
+        ( $matched_re, $change_branch, $change_module )
+            = _run_matches( $safe, $c, $self->mod_br_re, 1 )
+            unless $matched_re
+            and defined($change_branch)
+            and defined($change_module);
 
         # some change cannot be tied to a branch and a module?
         if ( !defined( $change_branch // $change_module ) ) {
@@ -449,6 +472,8 @@ sub expand_link {
         $input = ${^POSTMATCH};
     }
 
+    warn "Web link expanded to $output\n" if $self->verbose;
+
     return $output;
 }
 
@@ -461,7 +486,7 @@ shortening service is configured, the original URL is returned.
 
 sub shorten_url {
     my ( $self, $url ) = @_;
-    return unless my $service = $self->short_url_service;
+    return $url unless my $service = $self->short_url_service;
 
     my $ok = eval {
         require WWW::Shorten;
@@ -601,9 +626,9 @@ represents a single commit of the repository.
 
 B<describe_commit> is called several times, until it returns C<undef>. The idea
 is that a single L<App::KGB::Client> run can be used to process several commits
-(for example if the repository is L<Git>). If this is the case each call to
+(for example if the repository is L<git(1)>). If this is the case each call to
 B<describe_commit> shall return information about the next commit in the
-series. For L<Subversion>, this module is expected to return only one commit,
+series. For L<svn(1)>, this module is expected to return only one commit,
 subsequent calls shall return C<undef>.
 
 =back

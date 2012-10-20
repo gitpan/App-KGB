@@ -44,7 +44,7 @@ App::KGB::Client::Subversion - KGB interface to Subversion
 =head1 DESCRIPTION
 
 B<App::KGB::Client::Subversion> provides Subversion-specific retrieval of
-commits and changes for L<KGB::Client>.
+commits and changes for L<App::KGB::Client>.
 
 =head1 CONSTRUCTOR
 

@@ -12,12 +12,11 @@ branch-and-module-re:
  - "/(trunk|tags|apps|attic)/([^/]+)"
  - "/branches/([^/]+)/([^/]+)"
 # for layout 1 package -> trunk/branches/tags) naturally the package name comes
-# into $1 and the branch - into $2, to remedy the situation, a special
-# configuration variable is introduced
-# branch-and-module-re-swap: 1
-# branch-and-mmodule-re:
+# into $1 and the branch - into $2. To remedy the situation, use the other
+# variant:
+# module-and-branch-re:
 # - "/packages/([^/]+)/branches/([^/]+)"
-# - "/packages/([^/]+)/(trunk|tags)"
+# - "/packages/([^/]+)/(?:trunk|tags)/([^/]+)"
 #
 # some global parameters can be set for all servers
 password: "very secret"

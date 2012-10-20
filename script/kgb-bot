@@ -59,6 +59,10 @@ I<file>, like:
 
 There are no colour codes in the output.
 
+=item --debug
+
+Log additional debugging information
+
 =back
 
 =cut
@@ -71,12 +75,12 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.22';
+our $VERSION = '1.23';
 
 use Cwd;
 
 our $config;
-our ( $config_file, $config_dir, $foreground );
+our ( $config_file, $config_dir, $foreground, $debug );
 our %const = (
     SOAPsvc => "SOAPServer",
     BAsvc   => "BotAddressed",
@@ -159,32 +163,59 @@ sub merge_conf_hash($$) {
     }
 }
 
-sub read_conf ($$) {
-    my $file = shift;
-    my $dir  = shift;
+sub parse_conf_file($;$);
+sub parse_conf_file($;$) {
+    my $src = shift;
+    my $met = shift // {};
 
-    die "$file is world-readable\n" if ( stat($file) )[2] & 04;
+    return {} if $met->{$src}++;
 
-    my $conf;
-    KGB->debug("Loading '$file'.");
-    $conf = YAML::LoadFile($file)
-        or die "Error loading config from $file\n"
-        if -e $file;
-
-    if ( defined($dir) and length($dir) and -e $dir ) {
-        -d $dir or die "'$dir' is not a directory\n";
-        -r $dir or die "'$dir' is not readable\n";
-        -x $dir or die "'$dir' is not usable (missing execute permission)\n";
-        for ( sort <$dir/*.conf> ) {
-            die "$_ is world-readable\n" if ( stat($_) )[2] & 04;
-            KGB->debug("Loading '$_'.");
-            my $c = YAML::LoadFile($_) or die "Error loading $_\n";
+    my $conf = {};
+    KGB->debug("Loading '$src.");
+    if ( -d $src ) {
+        -r _ or die "'$src' is not readable\n";
+        -x _ or die "'$src' is not usable (missing execute permission)\n";
+        for ( sort <$src/*.conf> ) {
+            my $c = parse_conf_file($_);
 
             eval { merge_conf_hash( $conf, $c ); 1 } or die "Error loading $_: $@";
         }
     }
-    my @confs = map { YAML::LoadFile($_) or "Error loading config from $_" }
-        sort <$dir/*.conf>;
+    else {
+        die "$src is world-readable\n" if ( stat($src) )[2] & 04;
+
+        $conf = YAML::LoadFile($src)
+            or die "Error loading config from $src\n";
+    }
+
+    if ( exists $conf->{include} ) {
+        my $inc = $conf->{include};
+        my @inc;
+
+        if (ref($inc)) {
+            die "'include' should be scalar or list\n"
+                unless ref($inc) eq 'ARRAY';
+
+            push @inc, @$inc;
+        }
+        else {
+            push @inc, $inc;
+        }
+
+        for my $f ( @inc ) {
+            my $c = parse_conf_file( $f, $met );
+            eval { merge_conf_hash( $conf, $c ); 1 } or die "Error loading $f: $@";
+        }
+    }
+
+    return $conf;
+}
+
+sub read_conf ($) {
+    my $file = shift;
+
+    my $conf = {};
+    $conf = parse_conf_file($file) if -e $file;
 
     die "Invalid or missing config key: soap"
         unless ( ref $conf->{soap}
@@ -283,23 +314,24 @@ sub read_conf ($$) {
 
     $conf->{colors}{prop_change} ||= 'underline';
 
+    $KGB::debug = $conf->{debug} if exists $conf->{debug};
+    $conf->{pid_dir} //= '/var/run/kgb-bot';
+
     return $conf;
 }
 
-sub load_conf($$) {
+sub load_conf($) {
     my $file = shift;
-    my $dir = shift;
-    my $conf = read_conf($file, $dir);
+    my $conf = read_conf($file);
 
     # Save globals
     $config_file = Cwd::realpath($file);
-    $config_dir  = Cwd::realpath($dir);
     $config      = $conf;
     return $conf;
 }
 
 sub reload_conf() {
-    my $new_conf = eval { KGB::read_conf($config_file, $config_dir) };
+    my $new_conf = eval { KGB::read_conf($config_file) };
     if ($@) {
         KGB->out("Error in configuration file: $@");
         return -1;
@@ -322,7 +354,7 @@ sub out {
 }
 
 sub debug {
-    return unless $KGB::config->{debug};
+    return unless $KGB::debug;
 
     shift->out( @_ );
 }
@@ -764,7 +796,7 @@ sub commit {
 sub do_commit {
     my ( $kernel, $params ) = @_;
 
-    KGB->out( "commit: " . YAML::Dump($params) ) if ( $KGB::config->{debug} );
+    KGB->out( "commit: " . YAML::Dump($params) ) if $KGB::debug;
 
     throw Error::Simple("commit(params ...)\n")
         unless ref $params
@@ -939,7 +971,7 @@ sub irc_registered {
 }
 
 sub _default {
-    return 0 unless ( $KGB::config->{debug} );
+    return 0 unless $KGB::debug;
     my ( $event, $args ) = @_[ ARG0 .. $#_ ];
     my $out = "$event ";
     foreach (@$args) {
@@ -1132,7 +1164,7 @@ sub irc_notify {
 
     my $alias = "irc_" . $KGB::config->{chanidx}{$chan}{network};
     $kernel->post( $alias => privmsg => $chan => $_ ) foreach (@$str);
-    if ( $KGB::config->{debug} ) {
+    if ( $KGB::debug ) {
         KGB->out("$alias/$chan > $_\n") foreach (@$str);
     }
 }
@@ -1353,6 +1385,7 @@ my $conf_file  = '/etc/kgb-bot/kgb.conf';
 my $conf_dir   = '/etc/kgb-bot/kgb.conf.d';
 $KGB::foreground = 0;
 $KGB::simulate = 0;
+$KGB::debug = 0;
 
 Getopt::Long::Configure("bundling");
 GetOptions(
@@ -1360,11 +1393,12 @@ GetOptions(
     'cd|config-dir=s' => \$conf_dir,
     'f|foreground' => \$KGB::foreground,
     'simulate=s'    => \$KGB::simulate,
+    'debug!'        => \$KGB::debug,
 ) or die 'Invalid parameters';
 
 @ARGV and die "No command line arguments supported\n";
 
-KGB::load_conf( $conf_file, $conf_dir );
+KGB::load_conf($conf_file);
 
 use Cwd;
 $KGB::simulate = Cwd::realpath($KGB::simulate) if $KGB::simulate;
@@ -1457,7 +1491,7 @@ $poe_kernel->run;
 if ($KGB::restart) {
     exec( $KGB::progname, '--foreground',
         '--config'     => $KGB::config_file,
-        '--config-dir' => $KGB::config_dir
+        $KGB::debug ? '--debug' : (),
     ) or die "couldn't re-exec: $!\ņ";
 }
 exit 0;

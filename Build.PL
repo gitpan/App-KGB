@@ -55,6 +55,7 @@ my $builder = My::Builder->new(
         'script/kgb-split-config' => 'sbin/kgb-split-config',
     },
     etc_files => { 'etc/kgb.conf' => 'etc/kgb-bot/kgb.conf' },
+    man_files => { 'man5/*' => 'man5/' },
     script_files => [ 'script/kgb-client' ],
     no_index => {
         directory => [ 'privinc' ],
@@ -63,5 +64,6 @@ my $builder = My::Builder->new(
 
 $builder->add_build_element('sbin');
 $builder->add_build_element('etc');
+$builder->add_build_element('man');
 
 $builder->create_build_script();

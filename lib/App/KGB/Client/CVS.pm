@@ -44,7 +44,7 @@ App::KGB::Client::CVS - KGB interface to CVS
 =head1 DESCRIPTION
 
 B<App::KGB::Client::CVS> provides CVS-specific retrieval of
-commits and changes for L<KGB::Client>.
+commits and changes for L<App::KGB::Client>.
 
 =head1 CONSTRUCTOR
 

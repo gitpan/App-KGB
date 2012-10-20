@@ -54,8 +54,15 @@ sub test_matching {
         = [ map { App::KGB::Change->new( { action => 'M', path => $_, } ) }
             @$files ];
 
-    $c->br_mod_re($res);
-    $c->br_mod_re_swap($swap);
+    if ($swap) {
+        $c->mod_br_re($res);
+        $c->br_mod_re( [] );
+    }
+    else {
+        $c->br_mod_re($res);
+        $c->mod_br_re( [] );
+    }
+
     my ( $branch, $module ) = $c->detect_branch_and_module( $changes );
 
     is( $branch, $wanted_branch,
