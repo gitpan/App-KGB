@@ -1,4 +1,4 @@
-1.24 (2012-11-?)
+1.24 (2012-11-22)
   * Documentation:
     + Document KGB protocol (currently v4 JSON only).
     + kgb-client.conf(5): add single-line-commit option.

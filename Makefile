@@ -10,7 +10,7 @@ all: build
 build install test manifest distcheck: Build
 	./Build $@
 
-orig:
+orig: distclean
 	[ ! -e debian/rules ] || $(MAKE) -f debian/rules clean
 	$(MAKE) Build
 	./Build $@
@@ -23,6 +23,6 @@ clean:
 
 realclean distclean:
 	[ ! -e Build ] || ./Build $@
-	rm -f MANIFEST.bak
+	rm -f MANIFEST.bak App-KGB-*.*.tar.gz
 
 # vim: noet
