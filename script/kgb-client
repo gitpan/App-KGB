@@ -54,6 +54,10 @@ kgb-client - relay commits to KGB servers
 
 =item B<kgb-client> I<option>... --relay-msg I<message>...
 
+=item B<kgb-client> --help
+
+=item B<kgb-client> --man
+
 =back
 
 =head1 DESCRIPTION
@@ -136,6 +140,14 @@ input as any standard Git post-receive hook.
 There are other ways to give kgb-client information about Git reflog, mostly
 useful when debugging on in unusual situations. See L<App::KGB::Client::Git>.
 
+The following settings can be configured via L<git-config(1)>:
+
+=over
+
+=item web-link
+
+=back
+
 =head2 CVS
 
 B<kgb-client> shall be installed in the F<loginfo> file under CVSROOT in the
@@ -166,6 +178,7 @@ For example:
 
 use App::KGB::Client::ServerRef;
 use Getopt::Long;
+use Pod::Usage;
 use YAML ();
 
 my ($conf_file,      $uri,        $proxy,
@@ -175,6 +188,7 @@ my ($conf_file,      $uri,        $proxy,
     @servers,        $git_reflog, $single_line_commits,
     $status_dir,     $web_link,   $short_url_service,
     $fake,           $protocol,   $relay_msg,
+    $help,           $man,
 );
 GetOptions(
     'conf=s'                     => \$conf_file,
@@ -200,22 +214,40 @@ GetOptions(
     'fake!'                      => \$fake,
     'protocol=s'                 => \$protocol,
     'relay-msg',                 => \$relay_msg,
-) or exit 1;
+    'help|?',                    => \$help,
+    'man',                       => \$man,
+) or pod2usage(2);
+
+pod2usage(0) if $help;
+pod2usage(-exitval => 0, -verbose => 2) if $man;
 
 if( $conf_file )
 {
     my $conf = YAML::LoadFile($conf_file)
         or die "Error loading config from $conf_file\n";
 
+    if ( ref($conf) ne "HASH" ) {
+        die "Invalid configuration: root element must be a map.\n";
+    }
     $uri      ||= $conf->{uri};
     $proxy    ||= $conf->{proxy};
     $repo_id  ||= $conf->{'repo-id'};
     $password ||= $conf->{password};
     $timeout  ||= $conf->{timeout};
-    @br_mod_re = @{ $conf->{'branch-and-module-re'} }
-        if !@br_mod_re and $conf->{'branch-and-module-re'};
-    @mod_br_re = @{ $conf->{'module-and-branch-re'} }
-        if !@mod_br_re and $conf->{'module-and-branch-re'};
+    if ( !@br_mod_re and $conf->{'branch-and-module-re'} ) {
+        if ( ref($conf->{'branch-and-module-re'}) ne "ARRAY" ) {
+            die ("Invalid configuration: 'branch-and-module-re' ".
+                "element must be a list.\n");
+        }
+        @br_mod_re = @{ $conf->{'branch-and-module-re'} };
+    }
+    if ( !@mod_br_re and $conf->{'module-and-branch-re'} ) {
+        if ( ref($conf->{'module-and-branch-re'}) ne "ARRAY" ) {
+            die ("Invalid configuration: 'module-and-branch-re' ".
+                "element must be a list.\n");
+        }
+        @mod_br_re = @{ $conf->{'module-and-branch-re'} };
+    }
     $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
     if ( $br_mod_re_swap ) {
         push @mod_br_re, @br_mod_re;
@@ -231,16 +263,20 @@ if( $conf_file )
     $protocol //= $conf->{protocol};
     $relay_msg //= $conf->{relay_msg};
 
-    @servers = map {
-        App::KGB::Client::ServerRef->new(
-            {   password => $password,
-                timeout  => $timeout,
-                verbose  => $verbose,
-                %$_
-            }
-            )
-        } @{ $conf->{servers} }
-        if $conf->{servers};
+    if ( $conf->{servers} ) {
+        if ( ref($conf->{'servers'}) ne "ARRAY" ) {
+            die "Invalid configuration: 'servers' element must be a list.\n";
+        }
+        @servers = map {
+            App::KGB::Client::ServerRef->new(
+                {   password => $password,
+                    timeout  => $timeout,
+                    verbose  => $verbose,
+                    %$_
+                }
+                )
+            } @{ $conf->{servers} };
+    }
 }
 
 push @servers,
@@ -259,7 +295,7 @@ die "repo-id not given\n" unless $repo_id;
 
 $single_line_commits //= 'auto';
 
-$single_line_commits =~ m/^(?:on|forced|auto)$/
+$single_line_commits =~ m/^(?:off|forced|auto)$/
     or die "Unknown value for the --single-line-commits option "
     . "('$single_line_commits')\n";
 

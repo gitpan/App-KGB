@@ -83,13 +83,24 @@ foreach ( @{ $yaml->{channels} } ) {
 }
 
 my $outfh = \*STDOUT;
+my ( $uid, $gid, $mode );
+
 if ($save) {
+    $uid  = ( stat($file) )[4];
+    $gid  = ( stat($file) )[5];
+    $mode = ( stat($file) )[2] & 07777;
     if ( $dir and -d $dir ) {
         $file = File::Spec->catdir($dir, "$prj.conf");
     }
+    umask(~$mode & 0777);
     open( $outfh, '>', $file );
 }
+
 print $outfh YAML::Dump($yaml);
+
+if ($save) {
+    chown $uid, $gid, $file;
+}
 
 __END__
 

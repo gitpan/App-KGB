@@ -7,7 +7,7 @@ Build: Build.PL
 
 all: build
 
-build install test manifest: Build
+build install test manifest distcheck: Build
 	./Build $@
 
 orig:
@@ -15,7 +15,7 @@ orig:
 	$(MAKE) Build
 	./Build $@
 
-dist: manifest
+dist: manifest distcheck
 	./Build $@
 
 clean:
@@ -23,5 +23,6 @@ clean:
 
 realclean distclean:
 	[ ! -e Build ] || ./Build $@
+	rm -f MANIFEST.bak
 
 # vim: noet

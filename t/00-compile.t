@@ -5,9 +5,9 @@ my $t = Test::Compile::Internal->new(verbose=>1);
 
 my @modules = $t->all_pm_files();
 
-eval { require SVN::Fs; 1 } or do {
+eval { require SVN::Core; require SVN::Fs; 1 } or do {
     $t->diag($@);
-    $t->diag("SVN::Fs unavailable, skipping compilation test of App::KGB::Client::Subversion");
+    $t->diag("SVN::Core/Fs unavailable, skipping compilation test of App::KGB::Client::Subversion");
     @modules = grep { $_ !~ m,App/KGB/Client/Subversion.pm$, } @modules;
 };
 

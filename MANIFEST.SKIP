@@ -8,3 +8,4 @@ MANIFEST.bak
 ^MYMETA.yml$
 ^MYMETA\.json$
 ^.pc/
+HOWTO.release

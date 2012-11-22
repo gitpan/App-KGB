@@ -1,3 +1,25 @@
+1.24 (2012-11-?)
+  * Documentation:
+    + Document KGB protocol (currently v4 JSON only).
+    + kgb-client.conf(5): add single-line-commit option.
+    + Document web-link configuration via git-config.
+  * Client:
+    + Add a few checks on the configuration file.
+    + Add --man and --help command-line options.
+    + Fix validation of --single-line-commits argument.
+    + Support web-link option via git configuration.
+  * Server:
+    + Avoid responding to senders having .bot. in their hostname.
+    + change default port to 5391. Closes Debian bug #691562 -- port conflict
+      with approx.
+    + kgb-add-project: chown/chmod config (snippet) like kgb.conf.
+    + Use asterisk for web link separator (used also for commit message
+      separator).
+    + Explicitly check and die if included conf file doesn't exist.
+    + Put URL on first line of multi-line notifications.
+    + Put back SVN in requirements now that Module::Build is fixed. See
+      https://rt.cpan.org/Public/Bug/Display.html?id=59593
+
 1.23 (2012-10-20)
   * t/compile*: use Test::Compile::Internal in order to show verbose errors
   * Server:
@@ -16,6 +38,7 @@
     + send_changes: detailed dump in verbose mode
     + introduce module-and-branch-re setting and deprecate
       branch-and-module-re-swap
+
 1.22 (2012-10-14)
   * kgb-add-project: document the new --dir option
   * Add API documentation (JSON-RPC only)
@@ -28,11 +51,13 @@
     + add new kgb-split-config script
     + refuse to load world-readable configuration files
   * fix a bug in determining the longest common directory in a change set
+
 1.21 (2012-10-11)
  * Server:
   + fix exception handling
   + better error messages
  * Debli: prepend 'http://deb.li/' to the returned key
+
 1.20 (2012-10-11)
  * kgb-add-project: avoid using 'keys($hashref)' which requires too recent perl
  * Client:

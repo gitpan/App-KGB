@@ -122,6 +122,10 @@ sub new {
 
     $self->_git( Git->repository( Repository => $self->git_dir ) );
 
+    if ( my $wl = $self->_git->config('kgb.web-link') ) {
+        $self->web_link($wl);
+    }
+
     if ( defined( $self->old_rev // $self->new_rev // $self->refname ) ) {
 
         # single commit

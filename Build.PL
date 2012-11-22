@@ -9,10 +9,12 @@ my $builder = My::Builder->new(
     dist_version_from => 'lib/App/KGB.pm',
     license        => 'gpl',
     configure_requires => {
-        'Module::Build'       => '0.38',
+        'Module::Build'       => '0.40',
+        perl                  => '5.010',
     },
     build_requires => {
         autodie               => 0,
+        perl                  => '5.010',
         'Test::Compile'       => 0,
         'Test::Perl::Critic'  => 0,
         'Test::Pod::Coverage' => 0,
@@ -28,7 +30,7 @@ my $builder = My::Builder->new(
         'Git'                          => 0,
         'IPC::System::Simple'          => 0,
         'JSON'                         => 0,
-        'JSON::RPC'                    => 0,
+        'JSON::RPC::Client'            => 0,
         'POE::Component::IRC'          => '5.56',
         'POE::Component::Server::SOAP' => 0,
         'POE'                          => 0,
@@ -36,12 +38,9 @@ my $builder = My::Builder->new(
         'Schedule::RateLimiter'        => 0,
         'SOAP::Lite'                   => 0,
         'WWW::Shorten'                 => 0,
-# these barf with M::B in perl 5.12[.1] and version.pm available
-# we comment themm here as a workaround
-# see http://bugs.debian.org/582739 and http://bugs.debian.org/589812
-#        'SVN::Fs'                      => 0,
-#        'SVN::Repos'                   => 0,
-#        'SVN::Core'                    => 0,
+        'SVN::Fs'                      => 0,
+        'SVN::Repos'                   => 0,
+        'SVN::Core'                    => 0,
         'YAML'                         => 0,
     },
     bindoc_dirs  => [qw(script sbin)],

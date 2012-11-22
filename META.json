@@ -26,12 +26,14 @@
             "Test::Pod" : "0",
             "Test::Pod::Coverage" : "0",
             "Test::Simple" : "0.92",
-            "autodie" : "0"
+            "autodie" : "0",
+            "perl" : "5.010"
          }
       },
       "configure" : {
          "requires" : {
-            "Module::Build" : "0.38"
+            "Module::Build" : "0.40",
+            "perl" : "5.010"
          }
       },
       "runtime" : {
@@ -43,12 +45,15 @@
             "Git" : "0",
             "IPC::System::Simple" : "0",
             "JSON" : "0",
-            "JSON::RPC" : "0",
+            "JSON::RPC::Client" : "0",
             "POE" : "0",
             "POE::Component::IRC" : "5.56",
             "POE::Component::Server::SOAP" : "0",
             "Proc::PID::File" : "0",
             "SOAP::Lite" : "0",
+            "SVN::Core" : "0",
+            "SVN::Fs" : "0",
+            "SVN::Repos" : "0",
             "Schedule::RateLimiter" : "0",
             "WWW::Shorten" : "0",
             "YAML" : "0",

@@ -75,7 +75,7 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.23';
+our $VERSION = '1.24';
 
 use Cwd;
 
@@ -181,11 +181,14 @@ sub parse_conf_file($;$) {
             eval { merge_conf_hash( $conf, $c ); 1 } or die "Error loading $_: $@";
         }
     }
-    else {
+    elsif ( -e $src ) {
         die "$src is world-readable\n" if ( stat($src) )[2] & 04;
 
         $conf = YAML::LoadFile($src)
             or die "Error loading config from $src\n";
+    }
+    else {
+        die "'$src' does not exist\n";
     }
 
     if ( exists $conf->{include} ) {
@@ -231,7 +234,7 @@ sub read_conf ($) {
         and ref $conf->{channels} eq "ARRAY" );
 
     $conf->{soap}{service_name} ||= "KGB";
-    $conf->{soap}{server_port}  ||= 9999;
+    $conf->{soap}{server_port}  ||= 5391;
     $conf->{soap}{server_addr}  ||= "127.0.0.1";
 
     if ( my $queue_limit = ( $conf->{queue_limit} //= 150 ) ) {
@@ -618,15 +621,21 @@ sub do_commit_msg {
         ? colorize( web => $data->{extra}{web_link} )
         : undef;
 
+    # one-line notifications result in:
+    #  user branch commit module changes log link
+    # multi-line notifications look like:
+    #  user branch commit module changes link
+    #  log line 1
+    #  log line 2 ...
     if ( 1 == @log and length($log[0]) <= 80 ) {
         $string[0] .= ' ' . colorize( separator => '*' ) . ' ' . $log[0];
-        $string[0] .= ' ' . colorize( separator => '/' ) . ' ' . $web_string
-            if defined($web_string);
     }
     else {
         push @string, @log;
-        push @string, $web_string if defined($web_string);
     }
+
+    $string[0] .= ' ' . colorize( separator => '*' ) . ' ' . $web_string
+        if defined($web_string);
 
     my @tmp;
     # Standard says 512 (minus \r\n), anyway that's further trimmed when
@@ -1087,6 +1096,8 @@ sub got_a_message {
     my ( $kernel, $sender, $who, $where, $what ) = @_;
     my $chan = $where ? $where->[0] : undef;    # could be a private message
     my $net = get_net($sender);
+
+    return undef if $who =~ /\.bot\./;  # try to ignore bots
 
     unless ( $autoresponse_limitter->event() ) {
         KGB->out("Auto response rate-limit reached.\n");

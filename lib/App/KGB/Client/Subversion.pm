@@ -90,9 +90,9 @@ use base 'App::KGB::Client';
 use App::KGB::Change;
 use App::KGB::Commit;
 use Carp qw(confess);
+use SVN::Core;
 use SVN::Fs;
 use SVN::Repos;
-use SVN::Core;
 __PACKAGE__->mk_accessors(qw( _called repo_path revision ));
 
 use constant rev_prefix => 'r';

@@ -1,7 +1,11 @@
 ---
-abstract: 'collaborative IRC helper'
-author:
-  - unknown
+name: App-KGB
+version: 1.24
+author: []
+abstract: collaborative IRC helper
+license: gpl
+resources:
+  license: http://opensource.org/licenses/gpl-license.php
 build_requires:
   Test::Compile: 0
   Test::Perl::Critic: 0
@@ -9,55 +13,7 @@ build_requires:
   Test::Pod::Coverage: 0
   Test::Simple: 0.92
   autodie: 0
-configure_requires:
-  Module::Build: 0.38
-dynamic_config: 1
-generated_by: 'Module::Build version 0.4001, CPAN::Meta::Converter version 2.120921'
-license: open_source
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
-name: App-KGB
-no_index:
-  directory:
-    - privinc
-provides:
-  App::KGB:
-    file: lib/App/KGB.pm
-    version: 1.23
-  App::KGB::API:
-    file: lib/App/KGB/API.pm
-    version: 0
-  App::KGB::Change:
-    file: lib/App/KGB/Change.pm
-    version: 0
-  App::KGB::Client:
-    file: lib/App/KGB/Client.pm
-    version: 0
-  App::KGB::Client::CVS:
-    file: lib/App/KGB/Client/CVS.pm
-    version: 0
-  App::KGB::Client::Fake:
-    file: lib/App/KGB/Client/Fake.pm
-    version: 0
-  App::KGB::Client::Git:
-    file: lib/App/KGB/Client/Git.pm
-    version: 0
-  App::KGB::Client::RelayMsg:
-    file: lib/App/KGB/Client/RelayMsg.pm
-    version: 0
-  App::KGB::Client::ServerRef:
-    file: lib/App/KGB/Client/ServerRef.pm
-    version: 0
-  App::KGB::Client::Subversion:
-    file: lib/App/KGB/Client/Subversion.pm
-    version: 0
-  App::KGB::Commit:
-    file: lib/App/KGB/Commit.pm
-    version: 0
-  WWW::Shorten::Debli:
-    file: lib/WWW/Shorten/Debli.pm
-    version: 0.1
+  perl: 5.010
 requires:
   Class::Accessor: 0
   Digest::SHA: 0
@@ -66,16 +22,53 @@ requires:
   Git: 0
   IPC::System::Simple: 0
   JSON: 0
-  JSON::RPC: 0
+  JSON::RPC::Client: 0
   POE: 0
   POE::Component::IRC: 5.56
   POE::Component::Server::SOAP: 0
   Proc::PID::File: 0
   SOAP::Lite: 0
+  SVN::Core: 0
+  SVN::Fs: 0
+  SVN::Repos: 0
   Schedule::RateLimiter: 0
   WWW::Shorten: 0
   YAML: 0
   perl: 5.010
-resources:
-  license: http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt
-version: 1.23
+configure_requires:
+  Module::Build: 0.40
+  perl: 5.010
+provides:
+  App::KGB:
+    file: lib/App/KGB.pm
+    version: 1.24
+  App::KGB::API:
+    file: lib/App/KGB/API.pm
+  App::KGB::Change:
+    file: lib/App/KGB/Change.pm
+  App::KGB::Client:
+    file: lib/App/KGB/Client.pm
+  App::KGB::Client::CVS:
+    file: lib/App/KGB/Client/CVS.pm
+  App::KGB::Client::Fake:
+    file: lib/App/KGB/Client/Fake.pm
+  App::KGB::Client::Git:
+    file: lib/App/KGB/Client/Git.pm
+  App::KGB::Client::RelayMsg:
+    file: lib/App/KGB/Client/RelayMsg.pm
+  App::KGB::Client::ServerRef:
+    file: lib/App/KGB/Client/ServerRef.pm
+  App::KGB::Client::Subversion:
+    file: lib/App/KGB/Client/Subversion.pm
+  App::KGB::Commit:
+    file: lib/App/KGB/Commit.pm
+  WWW::Shorten::Debli:
+    file: lib/WWW/Shorten/Debli.pm
+    version: 0.1
+no_index:
+  directory:
+    - privinc
+generated_by: Module::Build version 0.340201
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4

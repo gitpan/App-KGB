@@ -111,6 +111,11 @@ of available services. Note that B<kgb-client> comes with an additional service
 called C<Debli>, which is primarily useful for clients running on Debian's
 collaboration server, alioth.
 
+=head2 B<single-line-commits>
+
+Send only a single line of the commit message to the channel.
+Possible values: auto|force|off, default: auto.
+
 =head1 EXAMPLE CONFGURATION
 
  # vim: filetype=yaml
