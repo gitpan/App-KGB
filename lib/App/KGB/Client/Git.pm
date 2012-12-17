@@ -225,7 +225,7 @@ sub _detect_commits {
     while ( my $next = shift @{ $self->changesets } ) {
         my ( $old_rev, $new_rev, $refname ) = @$next;
 
-        $self->_process_commit( $old_rev, $new_rev, $refname );
+        $self->_process_changeset( $old_rev, $new_rev, $refname );
     }
 }
 
@@ -465,7 +465,7 @@ sub _describe_branch_changes {
     return @commits;
 }
 
-sub _process_commit {
+sub _process_changeset {
     my ( $self, $old_rev, $new_rev, $refname ) = @_;
 
     $_ = $self->_git->command_oneline( 'rev-parse', $_ )

@@ -96,7 +96,8 @@ sub process {
     my $failure;
     for my $srv (@servers) {
         $failure = eval {
-            $srv->relay_message( $self, $self->relay_message );
+            $srv->relay_message( $self, $self->relay_message,
+                { use_irc_notices => $self->use_irc_notices } );
             $self->_last_server($srv);
 
             $self->note_last_server($srv);

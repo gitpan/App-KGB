@@ -41,7 +41,7 @@ App::KGB::Client::ServerRef - server instance in KGB client
 
     $s->send_changes( $client, $protocol_ver, $commit, $branch, $module, { extra => stuff } );
 
-    $s->relay_message( $client, $message );
+    $s->relay_message( $client, $message, [ { opts } ] );
 
 =head1 DESCRIPTION
 
@@ -116,7 +116,7 @@ This is a hash reference with additional parameters.
 
 =back
 
-=item B<relay_message>(I<client>, I<message>)
+=item B<relay_message>(I<client>, I<message> [, I<options hash> ])
 
 Sends a message to the server for relaying.
 
@@ -231,10 +231,10 @@ sub send_changes {
 }
 
 sub relay_message {
-    my ( $self, $client, $message ) = @_;
+    my ( $self, $client, $message, $opts ) = @_;
 
     $self->send_changes_json( $client->repo_id,
-        { method => 'relay_message', params => [$message] } );
+        { method => 'relay_message', params => [$message, $opts] } );
 }
 
 sub send_changes_soap {

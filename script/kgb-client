@@ -40,9 +40,11 @@ kgb-client - relay commits to KGB servers
                     --repository I<svn|git|cvs>
                     --timeout I<timeout-in-seconds>
                     --single-line-commits I<off|forced|auto>
+                    --use-irc-notices
                     --web-link I<template>
                     --short-url-service I<service>
                     --status-dir I<directory>
+                    --[no]-use-color
 
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
 
@@ -88,7 +90,9 @@ names.
 See L<kgb-client.conf(5)> for available configuration options. Unless noted
 otherwise, all the options in the configuration file can also be used on
 command line, prefixing them with two dashes. E.g. C<repo-id> becomes
-C<--repo-id>
+C<--repo-id>.
+
+Options given ont he command line take precedence over configuration file.
 
 =head1 FAKE COMMIT MODE
 
@@ -150,9 +154,9 @@ The following settings can be configured via L<git-config(1)>:
 
 =head2 CVS
 
-B<kgb-client> shall be installed in the F<loginfo> file under CVSROOT in the
-CVS repository. It shall be given two arguments -- the repository root, and the
-directory in which the changes are being made.
+B<kgb-client> shall be installed in the F<loginfo> file in the C<CVSROOT>
+module of the CVS repository. It shall be given two arguments -- the repository
+root, and the directory in which the changes are being made.
 
 For example:
 
@@ -181,6 +185,12 @@ use Getopt::Long;
 use Pod::Usage;
 use YAML ();
 
+# option settings may come from three sources:
+# 1. defaults
+# 2. configuration file
+# 3. command line
+# Sources are evaluated in this order. Every source overrides previous ones
+
 my ($conf_file,      $uri,        $proxy,
     $repo_id,        $password,   $timeout,
     $verbose,        $repo_type,  @br_mod_re, @mod_br_re,
@@ -188,14 +198,92 @@ my ($conf_file,      $uri,        $proxy,
     @servers,        $git_reflog, $single_line_commits,
     $status_dir,     $web_link,   $short_url_service,
     $fake,           $protocol,   $relay_msg,
-    $help,           $man,
+    $help,           $man,        $use_irc_notices,
+    $use_color,
 );
+
+# defaults
+$single_line_commits = 'auto';
+$use_color           = 1;
+
+Getopt::Long::Configure('pass_through');
+
 GetOptions(
-    'conf=s'                     => \$conf_file,
+    'conf=s'  => \$conf_file,
+    'help|?'  => \$help,
+    'man'     => \$man,
+) or pod2usage(2);
+pod2usage(0) if $help;
+pod2usage(-exitval => 0, -verbose => 2) if $man;
+
+# configuration file
+my $conf;
+
+sub from_conf {
+    my ( $setting, $ref ) = @_;
+    return unless exists $conf->{$setting};
+    ref($ref) or die "Internal error -- expecting reference ($setting)";
+
+    my $value = $conf->{$setting};
+    if ( ref($ref) eq 'SCALAR' ) {
+        die "'$setting' configuration option must be scalar"
+            if ref($value);
+        $$ref = $value;
+    }
+    elsif ( ref($ref) eq 'ARRAY' ) {
+        die "'$setting' configuration option must be array"
+            unless ref($value)
+            and ref($value) eq 'ARRAY';
+        @$ref = @$value;
+    }
+    elsif ( ref($ref) eq 'HASH' ) {
+        die "'$setting' configuration option must be map"
+            unless ref($value)
+            and ref($value) eq 'HASH';
+        %$ref = %$value;
+    }
+    else {
+        die "Internal error -- unknown reference ($setting)";
+    }
+}
+
+if( $conf_file ) {
+    $conf = YAML::LoadFile($conf_file)
+        or die "Error loading config from $conf_file\n";
+
+    if ( ref($conf) ne "HASH" ) {
+        die "Invalid configuration: root element must be a map.\n";
+    }
+    from_conf( uri                         => \$uri );
+    from_conf( proxy                       => \$proxy );
+    from_conf( 'repo-id'                   => \$repo_id );
+    from_conf( password                    => \$password );
+    from_conf( timeout                     => \$timeout );
+    from_conf( 'branch-and-module-re'      => \@br_mod_re );
+    from_conf( 'module-and-branch-re'      => \@mod_br_re );
+    from_conf( 'branch-and-module-re-swap' => \$br_mod_re_swap );
+    from_conf( 'ignore-branch'             => \$ignore_branch );
+    from_conf( module                      => \$module );
+    from_conf( repository                  => \$repo_type );
+    from_conf( 'single-line-commits'       => \$single_line_commits );
+    from_conf( 'use-irc-notices'           => \$use_irc_notices );
+    from_conf( 'status-dir'                => \$status_dir );
+    from_conf( 'web-link'                  => \$web_link );
+    from_conf( 'short-url-service'         => \$short_url_service );
+    from_conf( protocol                    => \$protocol );
+    from_conf( 'relay_msg'                 => \$relay_msg );
+    from_conf( 'use-color'                 => \$use_color );
+    from_conf( 'servers'                   => \@servers );
+}
+
+
+Getopt::Long::Configure('no_pass_through');
+
+GetOptions(
     'uri=s'                      => \$uri,
     'proxy=s'                    => \$proxy,
     'repo-id=s'                  => \$repo_id,
-    'pass|word=s'                => \$password,
+    'pass|password=s'            => \$password,
     'timeout=s'                  => \$timeout,
     'branch-and-module-re=s'     => \@br_mod_re,
     'br-mod-re=s'                => \@br_mod_re,
@@ -208,92 +296,40 @@ GetOptions(
     'verbose!'                   => \$verbose,
     'git-reflog=s'               => \$git_reflog,
     'single-line-commits=s'      => \$single_line_commits,
+    'use-irc-notices!'           => \$use_irc_notices,
     'status-dir=s'               => \$status_dir,
     'web-link=s'                 => \$web_link,
     'short-url-service=s'        => \$short_url_service,
     'fake!'                      => \$fake,
     'protocol=s'                 => \$protocol,
-    'relay-msg',                 => \$relay_msg,
-    'help|?',                    => \$help,
-    'man',                       => \$man,
+    'relay-msg'                  => \$relay_msg,
+    'use-color!'                 => \$use_color,
 ) or pod2usage(2);
 
-pod2usage(0) if $help;
-pod2usage(-exitval => 0, -verbose => 2) if $man;
-
-if( $conf_file )
-{
-    my $conf = YAML::LoadFile($conf_file)
-        or die "Error loading config from $conf_file\n";
-
-    if ( ref($conf) ne "HASH" ) {
-        die "Invalid configuration: root element must be a map.\n";
-    }
-    $uri      ||= $conf->{uri};
-    $proxy    ||= $conf->{proxy};
-    $repo_id  ||= $conf->{'repo-id'};
-    $password ||= $conf->{password};
-    $timeout  ||= $conf->{timeout};
-    if ( !@br_mod_re and $conf->{'branch-and-module-re'} ) {
-        if ( ref($conf->{'branch-and-module-re'}) ne "ARRAY" ) {
-            die ("Invalid configuration: 'branch-and-module-re' ".
-                "element must be a list.\n");
-        }
-        @br_mod_re = @{ $conf->{'branch-and-module-re'} };
-    }
-    if ( !@mod_br_re and $conf->{'module-and-branch-re'} ) {
-        if ( ref($conf->{'module-and-branch-re'}) ne "ARRAY" ) {
-            die ("Invalid configuration: 'module-and-branch-re' ".
-                "element must be a list.\n");
-        }
-        @mod_br_re = @{ $conf->{'module-and-branch-re'} };
-    }
-    $br_mod_re_swap //= $conf->{'branch-and-module-re-swap'};
-    if ( $br_mod_re_swap ) {
-        push @mod_br_re, @br_mod_re;
-        @br_mod_re = ();
-    }
-    $ignore_branch //= $conf->{'ignore-branch'};
-    $module //= $conf->{module};
-    $repo_type //= $conf->{repository};
-    $single_line_commits //= $conf->{'single-line-commits'};
-    $status_dir //= $conf->{'status-dir'};
-    $web_link //= $conf->{'web-link'};
-    $short_url_service //= $conf->{'short-url-service'};
-    $protocol //= $conf->{protocol};
-    $relay_msg //= $conf->{relay_msg};
-
-    if ( $conf->{servers} ) {
-        if ( ref($conf->{'servers'}) ne "ARRAY" ) {
-            die "Invalid configuration: 'servers' element must be a list.\n";
-        }
-        @servers = map {
-            App::KGB::Client::ServerRef->new(
-                {   password => $password,
-                    timeout  => $timeout,
-                    verbose  => $verbose,
-                    %$_
-                }
-                )
-            } @{ $conf->{servers} };
-    }
+if ( $br_mod_re_swap ) {
+    push @mod_br_re, @br_mod_re;
+    @br_mod_re = ();
 }
 
-push @servers,
+undef($use_irc_notices)
+    if $use_irc_notices and $use_irc_notices =~ /^(?:no|false)$/i;
+
+push @servers, { uri => $uri } if $uri;
+
+@servers = map {
     App::KGB::Client::ServerRef->new(
-    {   uri      => $uri,
-        password => $password,
-        timeout  => $timeout,
-        verbose  => $verbose,
-    }
-    ) if $uri;
+        {   password => $password,
+            timeout  => $timeout,
+            verbose  => $verbose,
+            %$_
+        }
+        )
+} @servers;
 
 die "no servers defined. use 'uri' or 'servers' configuration options\n"
     unless @servers;
 
 die "repo-id not given\n" unless $repo_id;
-
-$single_line_commits //= 'auto';
 
 $single_line_commits =~ m/^(?:off|forced|auto)$/
     or die "Unknown value for the --single-line-commits option "
@@ -342,6 +378,8 @@ my @client_args = (
     ignore_branch       => $ignore_branch,
     verbose             => $verbose,
     single_line_commits => $single_line_commits,
+    use_irc_notices     => $use_irc_notices,
+    use_color           => $use_color,
     status_dir          => $status_dir,
     web_link            => $web_link,
     short_url_service   => $short_url_service,

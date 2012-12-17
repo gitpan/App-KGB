@@ -92,8 +92,23 @@ C<(M+)>.
 
 =item B<extra> I<map>
 
-A map with additional parameters. Currently only B<web_link> is supported,
-containing an URL with commit details (e.g. gitweb or viewvc).
+A map with additional parameters. Currently supported members are:
+
+=over
+
+=item B<web_link>
+
+A URL with commit details (e.g. gitweb or viewvc).
+
+=item B<use_irc_notices>
+
+A flag whether to use IRC notices instead of regular messages.
+
+=item B<use_color>
+
+A flag whether to use colors when sending commit notifications. Defaults to 1.
+
+=back
 
 =back
 

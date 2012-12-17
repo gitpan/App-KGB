@@ -145,6 +145,16 @@ IRC and the rest is ignored. This is the default since version 1.14.
 
 =back
 
+=item B<use_irc_notices>
+
+If true signals the server that it should use IRC notices instead of regular
+messages. Use this if regular messages are too distracting for your channel.
+
+=item B<use_color>
+
+If true (the default) signals the server that it should use colors for commit
+notifications.
+
 =item B<status_dir>
 
 Specifies a directory to store information about the last server contacted
@@ -201,7 +211,7 @@ use YAML ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
     qw( repo_id servers br_mod_re mod_br_re module ignore_branch
-        single_line_commits status_dir verbose protocol
+        single_line_commits use_irc_notices use_color status_dir verbose protocol
         web_link short_url_service _last_server )
 );
 
@@ -223,7 +233,13 @@ See L<|FIELDS> above.
 =cut
 
 sub new {
-    my $self = shift->SUPER::new(@_);
+    my ( $class, $init ) = @_;
+
+    my $self = $class->SUPER::new(
+        {   use_color => 1,
+            %$init,
+        }
+    );
 
     print "Configuration: " . YAML::Dump(@_) if $self->verbose;
 
@@ -570,7 +586,12 @@ sub process_commit {
     for my $srv (@servers) {
         $failure = eval {
             my @args = ( $commit, $branch, $module );
-            push @args, { web_link => $web_link } if defined($web_link);
+            my %extra;
+            $extra{web_link} = $web_link if defined($web_link);
+            $extra{use_irc_notices} = $self->use_irc_notices
+                if $self->use_irc_notices;
+            $extra{use_color} = $self->use_color;
+            push @args, \%extra if %extra;
             $srv->send_changes( $self, $self->protocol, @args );
             $self->_last_server($srv);
 

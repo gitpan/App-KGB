@@ -13,6 +13,7 @@ eg/test-server-1.conf
 eg/test-server-1.conf.d/repos.conf
 eg/test-server-2.conf
 etc/kgb.conf
+HOWTO.release
 lib/App/KGB.pm
 lib/App/KGB/API.pm
 lib/App/KGB/Change.pm

@@ -75,7 +75,7 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.24';
+our $VERSION = '1.25';
 
 use Cwd;
 
@@ -565,6 +565,11 @@ sub do_commit_msg {
     my $branch = $data->{branch} // '';
     my $module = $data->{module} // '';
 
+    local $KGB::config->{colors} = {}
+        if exists $data->{extra}
+        and exists $data->{extra}{use_color}
+        and not $data->{extra}{use_color};
+
     my $repo = $KGB::config->{repositories}{$repo_id};
 
     my @channels = @{ $repo->{channels} };
@@ -621,6 +626,8 @@ sub do_commit_msg {
         ? colorize( web => $data->{extra}{web_link} )
         : undef;
 
+    my $use_notices = $data->{extra}{use_irc_notices};
+
     # one-line notifications result in:
     #  user branch commit module changes log link
     # multi-line notifications look like:
@@ -669,7 +676,10 @@ sub do_commit_msg {
             $fh->close;
         }
         else {
-            $kernel->yield( irc_notify => $chan => \@string );
+            $kernel->yield(
+                irc_notify => $chan => \@string,
+                $use_notices ? 'notice' : 'privmsg'
+            );
         }
     }
 }
@@ -1157,7 +1167,10 @@ sub irc_new_hash {
 }
 
 sub irc_notify {
-    my ( $kernel, $heap, $chan, $str ) = @_[ KERNEL, HEAP, ARG0, ARG1 ];
+    my ( $kernel, $heap, $chan, $str, $method )
+        = @_[ KERNEL, HEAP, ARG0, ARG1, ARG2 ];
+
+    $method ||= 'privmsg';
 
     # put some hidden character to avoid addressing anyone
     my $safety = $color_codes{normal};
@@ -1174,7 +1187,7 @@ sub irc_notify {
     }
 
     my $alias = "irc_" . $KGB::config->{chanidx}{$chan}{network};
-    $kernel->post( $alias => privmsg => $chan => $_ ) foreach (@$str);
+    $kernel->post( $alias => $method => $chan => $_ ) foreach (@$str);
     if ( $KGB::debug ) {
         KGB->out("$alias/$chan > $_\n") foreach (@$str);
     }
@@ -1343,7 +1356,9 @@ sub do_json_commit_v4 {
 }
 
 sub do_json_relay_message {
-    my ( $self, $kernel, $repo_id, $message ) = @_;
+    my ( $self, $kernel, $repo_id, $message, $opts ) = @_;
+
+    $opts ||= {};
 
     defined $repo_id or die "Missing repo_id argument\n";
     exists $KGB::config->{repositories}{$repo_id} or die "Invalid repository '$repo_id'\n";
@@ -1364,7 +1379,10 @@ sub do_json_relay_message {
             $fh->close;
         }
         else {
-            $kernel->yield( irc_notify => $chan => [ $message ] );
+            $kernel->yield(
+                irc_notify => $chan => [$message],
+                $opts->{use_irc_notices} ? 'notice' : 'privmsg'
+            );
         }
     }
 
