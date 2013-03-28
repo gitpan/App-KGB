@@ -75,7 +75,7 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.25';
+our $VERSION = '1.26';
 
 use Cwd;
 

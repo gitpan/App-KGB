@@ -116,6 +116,16 @@ collaboration server, alioth.
 Send only a single line of the commit message to the channel.
 Possible values: auto|force|off, default: auto.
 
+=head2 B<use-irc-notices>
+
+If set to a true value will make the IRC bot use IRC C<notice> messages instead
+of the ordinary C<privmsg> messages.
+
+=head2 B<use-color>
+
+It set to a false value will make the IRC bot use no color in the
+notifications.
+
 =head1 EXAMPLE CONFGURATION
 
  # vim: filetype=yaml
@@ -133,6 +143,8 @@ Possible values: auto|force|off, default: auto.
  #short-url-service: Metamark
  short-url-service: Debli
  ignore-branch: trunk
+ use-irc-notices: 0
+ use-color: 1
  servers:
   - uri: http://kgb.server.org:9418/
   - uri: http://another.kgb.server.org:9418/

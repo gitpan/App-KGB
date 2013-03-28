@@ -1,7 +1,7 @@
 # vim: ts=4:sw=4:et:ai:sts=4
 #
 # KGB - an IRC bot helping collaboration
-# Copyright © 2009 Damyan Ivanov
+# Copyright © 2009,2013 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -222,10 +222,12 @@ sub _detect_commits {
 
     $self->_commits([]);
 
-    while ( my $next = shift @{ $self->changesets } ) {
+    $self->_describe_branch_updates;
+
+    for my $next ( @{ $self->changesets } ) {
         my ( $old_rev, $new_rev, $refname ) = @$next;
 
-        $self->_process_changeset( $old_rev, $new_rev, $refname );
+        $self->_process_changeset_simple( $old_rev, $new_rev, $refname );
     }
 }
 
@@ -401,71 +403,168 @@ sub _describe_annotated_tag {
     );
 }
 
-# there is a subtle problem when two branches with common commits are received
-# together
-# since we only traverse commits that follow from a branch HEAD, excluding any
-# commits that are also reachable from other branches, common commits are
-# excluded from all traversals
-# to reproduce:
-#   $ git co master
-#   make a change and commit         [1]
-#   $ git co -b other
-#   make another change and commit   [2]
-#   $ git push --all
-#  now [1] is excluded from master traversal because it is also included in
-#  'other'. and it is excluded from 'other' traversal because it is reachable
-#  from 'master'
-# we work around the problem by excluding otherwise reachable commits only
-# when $old_rev is all zeroes, which happens only when the branch update is
-# actually a branch creation
-sub _describe_branch_changes {
-    my ( $self, $branch, $old_rev, $new_rev ) = @_;
+sub _describe_branch_updates {
+    my ( $self ) = @_;
+    my %ref_branch;
+    my %ref_parent;
+    my @new_branches;
+    my %branch_head;
+    my %updated_heads;
+    my @old_revs;
 
-    my $is_new_branch = $old_rev =~ /^0+$/;
+    warn "# ======== processing changesets" if 0;
+    my @params = qw(--topo-order --parents --first-parent);
+    my @updated;
+    for my $cs ( @{ $self->changesets } ) {
+        my ( $old, $new, $ref ) = @$cs;
+        warn "# considering $old $new $ref" if 0;
 
-    warn "describing changes in $branch" if 0;
-    # the idea here is to get all revs that are in $branch HEAD, and not
-    # reachable by other branches' heads
-    my $branch_head = $self->_git->command_oneline( 'rev-parse', $branch );
+        next unless $ref =~ m{^refs/heads/(.+)}; # not interested in tags
+        my $branch = $1;
+        next if $new =~ /^0+$/;                 # nor dropped branches
 
-    warn "head is $branch_head" if 0;
+        $ref_branch{$new} = $branch;
+        warn "# $new is on $branch" if 0;
 
-    my @not_other
-        = $is_new_branch
-        ? grep { $_ ne "^$branch_head" }
-        $self->_git->command( 'rev-parse', '--not', '--all' )
-        : ();
+        warn "$branch head is $new" if 0;
+        $branch_head{$branch} = $new;
+        $updated_heads{$branch} = 1;
 
-    warn "\@not_other = ".join(' ', @not_other) if 0;
-
-    if ( $is_new_branch and not @not_other and $branch ne 'master' ) {
-        # this is a fully-merged branch, a hollow one
-        # all the changes are already send
-        # or, this is the initial import of a branch without parents
-        # we set in stone that only 'master' is allowed to be the initial
-        # import
-        return ();
+        if ( $old =~ /^0+$/ ) {
+            push @new_branches, $branch;
+        }
+        else {
+            push @updated, "$new", "^$old";
+            push @old_revs, $old;
+        }
     }
-
-    my $ref_spec = $is_new_branch ? $new_rev : "$old_rev..$new_rev";
-
-    warn "ref spec: $ref_spec" if 0;
-
-    my @revs = $self->_git->command( 'rev-list', '--reverse', @not_other, $ref_spec );
-
-    warn "revisions to describe: ".join(' ', @revs) if 0;
 
     my @commits;
-    for my $ref (@revs) {
-        my $cmt = App::KGB::Commit->new( $self->_describe_ref($ref) );
-        $cmt->branch($branch);
-        push @commits, $cmt;
+    my %reported;
+
+    if (@updated) {
+        warn "# git rev-list @params @updated" if 0;
+        my @lines = $self->_git->command( 'rev-list', @params, @updated);
+
+        my @refs;
+        for (@lines) {
+            my ( $ref, @parents ) = split(/\s+/);
+
+            push @refs, $ref;
+
+            if ( @parents and not $ref_branch{ $parents[0] } ) {
+                $ref_branch{ $parents[0] } = $ref_branch{$ref}
+                    or confess
+                    "Ref $ref with parent $parents[0] is of unknown branch";
+                warn
+                    "# $parents[0] determined to be on branch $ref_branch{$ref}"
+                    if 0;
+            }
+        }
+
+        warn "# revisions to describe: " . join( ' ', @refs ) if 0;
+
+        for my $ref (@refs) {
+            my $cmt = App::KGB::Commit->new( $self->_describe_ref($ref) );
+            warn "# putting $ref on $ref_branch{$ref}" if 0;
+            $cmt->branch( $ref_branch{$ref} );
+            unshift @commits, $cmt;
+            $reported{$ref} = 1;
+        }
     }
 
-    return @commits;
+    my %nb = map( ( $_ => 1 ), @new_branches );
+
+    # walk the branch until it is exhausted or a revision with multiple
+    # children (branch point) is reached
+    # when walking skip all commits laready reported
+    # terminate walk on old revs
+    if ( @new_branches ) {
+        my @existing_branches;
+        my @lines
+            = $self->_git->command( 'branch', '-v', '--no-abbrev' );
+        for my $l (@lines) {
+            $l =~ s/^[ *]+//;
+            my ( $ref, $sha, $ignore ) = split( ' ', $l );
+            $branch_head{$ref} = $sha;
+            push @existing_branches, $ref unless $nb{$ref};
+        }
+        warn "existing branches: @existing_branches" if 0;
+        # exclude commits in all branches that aren't part of this push
+        my @exclude;
+        for ( @existing_branches ) {
+            push @exclude, $branch_head{$_} unless $updated_heads{$_};
+        };
+        push @exclude, @old_revs;
+        $_ = "^$_" for @exclude;
+
+        for my $b (@new_branches) {
+            warn "# Looking into new branch $b" if 0;
+
+            warn "# git rev-list --topo-order --first-parent --parents $b @exclude" if 0;
+            my @lines = $self->_git->command( 'rev-list', '--topo-order',
+                '--first-parent', '--parents', $b, @exclude );
+
+            my @br_commits;
+
+            my @revs;
+            for my $line (@lines) {
+                warn "# $line" if 0;
+                my ( $rev, $parent, @other_parents ) = split( /\s+/, $line );
+                if ( $reported{$rev} ) {
+                    warn "$rev is already reported" if 0;
+                    next;
+                }
+
+                my $pipe = $self->_git->command_output_pipe( 'rev-list',
+                    '--children', $rev );
+
+                my $in = <$pipe>;
+                $self->_git->command_close_pipe($pipe);
+                my @children;
+                if ($in) {
+                    chomp($in);
+                    warn "# Children of $rev: @children" if 0;
+                    @children = split(/\s+/, $in);
+                    shift @children;
+                }
+
+                if ( @children > 1 ) {
+                    unshift @br_commits,
+                        App::KGB::Commit->new(
+                        log => "Branch '$b' created",
+                        id  => substr( $rev, 0, 7 ),
+                        );
+                    last;
+                }
+                if ($parent) {
+                    $ref_branch{$parent} //= $ref_branch{$rev};
+                    $ref_parent{$rev} = $parent;
+                }
+
+                my $cmt = App::KGB::Commit->new( $self->_describe_ref($rev) );
+                warn "# putting $rev on $ref_branch{$rev}" if 0;
+                $cmt->branch( $ref_branch{$rev} );
+                unshift @br_commits, $cmt;
+                $reported{$rev} = 1;
+            }
+
+            push @commits, @br_commits;
+            push @commits,
+                App::KGB::Commit->new(
+                {   id      => substr( $branch_head{$b}, 0, 7 ),
+                    log     => "branch created",
+                    branch  => $b,
+                    changes => [],
+                }
+                ) unless @br_commits;
+        }
+    }
+
+    push @{ $self->_commits }, @commits;
 }
 
-sub _process_changeset {
+sub _process_changeset_simple {
     my ( $self, $old_rev, $new_rev, $refname ) = @_;
 
     $_ = $self->_git->command_oneline( 'rev-parse', $_ )
@@ -557,6 +656,9 @@ EOF
             push @{ $self->_commits }, $self->_describe_annotated_tag($new_rev);
         }
         else {
+            # branch creations would be picked by _describe_branch_updates
+            return;
+
             my @commits = $self->_describe_branch_changes( $branch, $old_rev,
                 $new_rev );
 
@@ -598,6 +700,9 @@ EOF
         );
     }
     else {    # update
+        # should be processed by _describe_branch_updates
+        return;
+
         push @{ $self->_commits },
             $self->_describe_branch_changes( $branch, $old_rev, $new_rev );
     }

@@ -1,3 +1,13 @@
+1.26 (2013-03-28)
+
+  * update kgb-client.conf manual with the new options
+  * rework Git branch walking
+    avoids multiple notification about merged commits (Closes Debian bug #698133)
+  * notify even if log message is invalid UTF-8
+    notification with log of "(log is invalid UTF-8)" is better than
+    no notification at all
+    (Closes Debian bug #691183)
+
 1.25 (2012-12-27)
  * Documentation
    + client/CVS: mention that CVSROOT is a module

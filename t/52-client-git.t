@@ -213,7 +213,7 @@ my $other_branch_point = $commits{master}[0];
 
 my $c1 = $commit = $c->describe_commit;
 ok( defined($commit), 'commit 3 present' );
-is( $commit->branch, 'master' );
+is( $commit->branch, 'master', 'commit 3 branch is "master"' );
 is( $commit->id, shift @{ $commits{master} } );
 is( $commit->log, "a removed" );
 is( $commit->author, 'ser' );
@@ -234,11 +234,11 @@ my $tagged = $commit->id;
 
 $commit = $c->describe_commit;
 ok( defined($commit), 'commit 5 present' );
-is( $commit->id, $tagged );
-is( $commit->branch, 'tags' );
-is( $commit->log, "tag '1.0-beta' created" );
-is( $commit->author, undef );
-is( $commit->changes->[0]->as_string, '(A)1.0-beta' );
+is( $commit->id, $tagged, "commit 5 id" );
+is( $commit->branch, 'tags', "commit 5 branch" );
+is( $commit->log, "tag '1.0-beta' created", "commit 5 log" );
+is( $commit->author, undef, "commit 5 author" );
+is( $commit->changes->[0]->as_string, '(A)1.0-beta', "commit 5 changes" );
 
 is_irc_output("#test ser master ".$c1->id." a * a removed
 #test ser other ".$c2->id." b c * a change in the other branch
@@ -271,7 +271,10 @@ is( $commit->branch, 'tags' );
 is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->changes->[0]->as_string, '(A)1.0-release' );
-is( $commit->log, "Release 1.0 (tagged commit: $tagged)" );
+is( $commit->log,
+    "Release 1.0 (tagged commit: $tagged)",
+    'annotated tag log'
+);
 
 is_irc_output("#test ser other ".$c1->id." debian/README * add README for release
 #test ser tags ".$c2->id." 1.0-release * Release 1.0 (tagged commit: ".$c1->id.")
@@ -282,15 +285,19 @@ is_irc_output("#test ser other ".$c1->id." debian/README * add README for releas
 $git->command('branch', 'hollow');
 push_ok();
 
+# hollow branches are not detected for now
+
 $commit = $c->describe_commit;
 ok( defined($commit), 'hollow branch described' );
-is( $commit->id, $tagged );
-is( $commit->branch, 'hollow' );
-is( $commit->author, 'ser' );
-is( scalar( @{ $commit->changes } ), 0 );
-is( $commit->log, "branch created" );
+is( $commit->id, $tagged, "hollow commit is $tagged" );
+is( $commit->branch, 'hollow', "hollow commit branch is 'hollow'" );
+is( scalar( @{ $commit->changes } ), 0, "no changes in hollow commit" );
+is( $commit->log, "branch created", "hollow commit log is 'branch created'" );
 
-is_irc_output("#test ser hollow ".$commit->id." * branch created\n");
+$commit = $c->describe_commit;
+ok( !defined($commit), 'hollow branch has no commits' );
+
+#is_irc_output("#test ser hollow ".$commit->id." * branch created\n");
 
 # some UTF-8
 w 'README', 'You dont read this!? Bad!';
@@ -318,8 +325,8 @@ $git->command( [ 'push', '-u', 'origin', 'allnew' ], { STDERR => 0 } );
 
 $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch creation commit exists' );
-is( $commit->branch, 'allnew' );
-is( $commit->log, "created empty branch allnew" );
+is( $commit->branch, 'allnew', 'empty branch name' );
+is( $commit->log, "created empty branch allnew", 'empty branch log' );
 
 is_irc_output("#test ser allnew ".$commit->id." * created empty branch allnew\n");
 
@@ -328,22 +335,17 @@ $commit = $c->describe_commit;
 is( $commit, undef );
 
 # now the same on the master branch
-$git->command( [ 'checkout', 'master' ], { STDERR => 0 } );
+$git->command( [ 'checkout', '-q', 'master' ], { STDERR => 0 } );
 $git->command( 'merge', 'allnew' );
 push_ok();
-$c1 = $commit = $c->describe_commit;
-ok( defined($commit), 'empty branch creation commit exists' );
-is( $commit->branch, 'master' );
-is( $commit->log, "created empty branch allnew" );
 $c2 = $commit = $c->describe_commit;
 ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
 
-is_irc_output("#test ser master ".$c1->id." * created empty branch allnew
-#test ser master ".$c2->id." * Merge branch 'allnew'\n");
+is_irc_output("#test ser master ".$c2->id." * Merge branch 'allnew'\n");
 
-$git->command( checkout => 'other' );
+$git->command( checkout => '-q', 'other' );
 mkdir( File::Spec->catdir( $local, 'debian', 'patches' ) );
 
 w( File::Spec->catfile( 'debian', 'patches', 'series' ), 'some.patch' );

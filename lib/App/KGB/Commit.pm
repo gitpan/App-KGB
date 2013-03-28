@@ -92,7 +92,7 @@ sub new {
 
     my $log = $self->log;
     utf8::decode($log)
-        or confess "Log message is not valid UTF-8"
+        or $log = "(log message is not valid UTF-8)"
         if defined($log);
     $self->log($log);
 
