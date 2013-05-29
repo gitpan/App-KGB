@@ -43,16 +43,19 @@ sub in_wd {
 
 system 'svnadmin', 'create', $repo;
 
+my $hook_log;
+
 if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
     diag "will try to send notifications to locally running bot";
     use Cwd;
+    $hook_log = catdir( $r, 'hook.log' );
     my $R = getcwd;
     my $h;
     open $h, '>', "$repo/hooks/post-commit";
     print $h <<"EOF";
 #!/bin/sh
 
-PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $r \$1 \$2
+PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $r \$1 \$2 >> $hook_log 2>&1
 EOF
     close $h;
     chmod 0755, "$repo/hooks/post-commit";
@@ -160,3 +163,4 @@ ok( not $change->prop_change );
 is( $change->action, 'D' );
 
 
+diag `cat $hook_log` if $hook_log and -s $hook_log;

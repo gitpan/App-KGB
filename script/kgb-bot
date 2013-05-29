@@ -5,7 +5,7 @@ use utf8;
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2008,2009,2010,2011,2012 Damyan Ivanov
+# Copyright © 2008,2009,2010,2011,2012,2013 Damyan Ivanov
 # Copyright © 2010 gregor herrmann
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -75,7 +75,7 @@ use encoding 'utf8';
 use open ':encoding(utf8)';
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.26';
+our $VERSION = '1.27';
 
 use Cwd;
 
@@ -87,6 +87,7 @@ our %const = (
     Connsvc => "Connecter",
     NSsvc   => "NickServID",
     NRsvc   => "NickReclaim",
+    AJsvc   => "AutoJoin",
 );
 our %supported_protos = (
     "0" => 1,
@@ -951,8 +952,13 @@ sub irc_registered {
     $alias =~ s/^irc_//;
     my $opts = $KGB::config->{networks}{$alias};
 
-    $irc_object->plugin_add(
-        $KGB::const{NSsvc},
+    $irc_object->plugin_add( $KGB::const{AJsvc},
+        POE::Component::IRC::Plugin::AutoJoin->new(
+            Channels => $opts->{channels},
+        )
+    ) if ( $opts->{channels} );
+
+    $irc_object->plugin_add( $KGB::const{NSsvc},
         POE::Component::IRC::Plugin::NickServID->new(
             Password => $opts->{nickserv_password},
         )
@@ -983,7 +989,8 @@ sub irc_registered {
             Nick     => $opts->{nick},
             Ircname  => $opts->{ircname},
             Username => $opts->{username},
-            Password => $opts->{password}
+            Password => $opts->{password},
+            Flood    => $opts->{flood},
         }
     );
     undef;
@@ -1034,18 +1041,12 @@ sub get_net {
 sub irc_001 {
     my ( $kernel, $sender ) = @_[ KERNEL, SENDER ];
     my $net = get_net($sender);
+    my $channels = $KGB::config->{networks}{$net}{channels};
 
     # Get the component's object at any time by accessing the heap of
     # the SENDER
-    KGB->out( "Connected to $net (", $sender->get_heap->server_name(),
-        ")\n" );
-    my $channels = $KGB::config->{networks}{$net}{channels};
-    if ($channels) {
-        KGB->out("Joining @$channels...\n");
-
-        # In any irc_* events SENDER will be the PoCo-IRC session
-        $kernel->post( $sender => join => $_ ) for @$channels;
-    }
+    KGB->out( "Connected to $net (", $sender->get_heap->server_name(), ")\n" );
+    KGB->out( "Joining @$channels...\n" ) if ($channels);
     undef;
 }
 
@@ -1366,23 +1367,55 @@ sub do_json_relay_message {
     my @channels = @{ $repo->{channels} };
     die("Repository $repo_id has no associated channels.\n") unless @channels;
 
-    defined($message) or die "No message parameter";
-    length($message) or die "Empty message";
+    my @messages;
 
-    foreach my $chan ( @channels ) {
-        if ($KGB::simulate) {
-            my $fh = IO::File->new(">> $KGB::simulate")
-                or die "Error opening $KGB::simulate for writing: $!\n";
-            $fh->autoflush(1);
-            $fh->binmode(':utf8');
-            $fh->print("$chan $message\n");
-            $fh->close;
+    defined($message) or die "No message parameter";
+    if (ref($message) ) {
+        ref($message) eq 'ARRAY'
+            or die "Unsupported ref ("
+            . ref($message)
+            . ") for the message parameter";
+
+        for (@$message) {
+            defined($_) and not ref($_) or die "Invalid message";
+            length($_) or die "Empty message";
         }
-        else {
-            $kernel->yield(
-                irc_notify => $chan => [$message],
-                $opts->{use_irc_notices} ? 'notice' : 'privmsg'
-            );
+
+        KGB->debug(
+            sprintf( "Received a batch of %d messages\n", scalar(@$message) )
+        );
+        @messages = @$message;
+    }
+    else {
+        length($message) or die "Empty message";
+
+        push @messages, $message;
+    }
+
+    die "Too much messages (rate limit overflow)"
+        if $KGB::config->{queue_limit}
+        and $KGB::IRC::irc_object
+        and $KGB::config->{queue_limit}
+        < ( $KGB::IRC::irc_object->send_queue + scalar(@messages) );
+
+    foreach my $msg (@messages) {
+        foreach my $chan ( @channels ) {
+            for my $line ( split( /\n/, $msg ) ) {
+                if ($KGB::simulate) {
+                    my $fh = IO::File->new(">> $KGB::simulate")
+                        or die "Error opening $KGB::simulate for writing: $!\n";
+                    $fh->autoflush(1);
+                    $fh->binmode(':utf8');
+                    $fh->print("$chan $line\n");
+                    $fh->close;
+                }
+                else {
+                    $kernel->yield(
+                        irc_notify => $chan => [$line],
+                        $opts->{use_irc_notices} ? 'notice' : 'privmsg'
+                    );
+                }
+            }
         }
     }
 
@@ -1397,6 +1430,7 @@ use warnings;
 use POE;
 use POE::Component::Server::SOAP;
 use POE::Component::IRC::State;
+use POE::Component::IRC::Plugin::AutoJoin;
 use POE::Component::IRC::Plugin::BotAddressed;
 use POE::Component::IRC::Plugin::Connector;
 use POE::Component::IRC::Plugin::NickReclaim;

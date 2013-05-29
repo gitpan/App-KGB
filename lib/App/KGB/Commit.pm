@@ -70,7 +70,7 @@ strings.
 =cut
 
 use base 'Class::Accessor::Fast';
-__PACKAGE__->mk_accessors( qw( id changes log author branch module ) );
+__PACKAGE__->mk_accessors( qw( id changes log author author_name branch module ) );
 
 use Carp qw(confess);
 
@@ -97,6 +97,38 @@ sub new {
     $self->log($log);
 
     return $self;
+}
+
+=head1 OVERLOADS
+
+=over
+
+=item stringify
+
+Returns a text representation of the commit object
+
+=back
+
+=cut
+
+use overload '""' => \&stringify;
+
+sub stringify {
+    my $self = shift;
+
+    my @data;
+    for my $f (qw(id changes log author author_name branch module)) {
+        next unless $self->$f;
+
+        if ( $f eq 'changes' ) {
+            push @data, "changes=[" . join( ', ', @{ $self->$f } ) . "]";
+        }
+        else {
+            push @data, "$f=" . $self->$f;
+        }
+    }
+
+    return ref($self) . '(' . join( ', ', @data ) . ')';
 }
 
 1;

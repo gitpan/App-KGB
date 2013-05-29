@@ -26,7 +26,10 @@ use base 'App::KGB::Client';
 use Git;
 use Carp qw(confess);
 __PACKAGE__->mk_accessors(
-    qw( changesets old_rev new_rev refname git_dir _git _commits reflog ));
+    qw( changesets old_rev new_rev refname git_dir _git _commits reflog
+        squash_threshold squash_msg_template
+        branch_ff_msg_template
+    ));
 
 use App::KGB::Change;
 use App::KGB::Commit;
@@ -106,6 +109,36 @@ In all of the above methods, the location of the F<.git> directory can be given
 in the B<git_dir> parameter, or it will be taken from the environment variable
 B<GIT_DIR>.
 
+=head2 B<git-config> parameters
+
+The following parameters can be set in the C<[kgb]> section of
+L<git-config(1)>. If present, they override the settings in the configuration
+file and these given on the command line.
+
+=over
+
+=item web-link
+
+See L<App::KGB::Client/web-link> for details.
+
+=item squash-threshold I<number>
+
+Unique to Git KGB client. Sets a threshold of the notifications produced for a
+given branch update. If there are more commits in the update, instead of
+producing huge amounts of notifications, the commits are "squashed" into one
+notification per branch with a summary of the changes.
+
+The default value is C<20>.
+
+=item squash-message-template I<string>
+
+A template for construction of squashed messages. See
+L<App::KGB::Client/message-template> for details.
+
+The default is C<${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}>.
+
+=back
+
 =cut
 
 sub new {
@@ -122,9 +155,30 @@ sub new {
 
     $self->_git( Git->repository( Repository => $self->git_dir ) );
 
+    unless ( $self->module ) {
+        require Cwd;
+        my @dirs = File::Spec->splitdir( Cwd::abs_path( $self->git_dir ) );
+        pop @dirs if @dirs and $dirs[-1] eq '.git';
+        my $module = $dirs[-1];
+        $module =~ s/\.git$// if $module;
+        $self->module($module);
+    }
+
     if ( my $wl = $self->_git->config('kgb.web-link') ) {
         $self->web_link($wl);
     }
+    if ( my $st = $self->_git->config('kgb.squash-threshold') ) {
+        $self->squash_threshold($st);
+    }
+    $self->squash_threshold(20) unless defined $self->squash_threshold;
+
+    if ( my $smt = $self->_git->config('kgb.squash-message-template') ) {
+        $self->squash_msg_template($smt);
+    }
+    $self->squash_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}')
+        unless $self->squash_msg_template;
+    $self->branch_ff_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}} fast-forward')
+        unless $self->branch_ff_msg_template;
 
     if ( defined( $self->old_rev // $self->new_rev // $self->refname ) ) {
 
@@ -160,10 +214,7 @@ sub new {
         }
 
         defined $self->reflog
-            and confess "You can't supply both chaangesets reflog";
-    }
-    elsif ($self->reflog) {
-        $self->_parse_reflog;
+            and confess "You can't supply both changesets  and reflog";
     }
     elsif ( @ARGV == 3 ) {
 
@@ -171,7 +222,7 @@ sub new {
         $self->changesets( [ [@ARGV] ] );
     }
     else {
-        confess "No reflog sources given";
+        $self->_parse_reflog;
     }
 
     return $self;
@@ -183,8 +234,8 @@ sub _parse_reflog {
     # read changeset data from a file
     $self->changesets( [] );
     my $fh;
-    open( $fh, $self->reflog )
-        or die "open(" . $self->reflog . "): $!";
+    open( $fh, $self->reflog // '-' )
+        or die "open(" . $self->reflog // '-' . "): $!";
         # in order for '-' to open STDIN, we must use two-argument form of
         # open(). see 'perldoc -f open'
     while (<$fh>) {
@@ -283,9 +334,14 @@ sub _describe_ref {
     my @log;
     my @changes;
     my @parents;
-    my $author;
+    my $author_login;
+    my $author_name;
     while (<$fh>) {
-        $author = $1, next if /^author .+ <([^>]+)@[^>]+>/;
+        if ( /^author (.+) <([^>]+)@[^>]+>/ ) {
+            $author_name = $1;
+            $author_login = $2;
+            next;
+        }
         push( @parents, substr( $1, 0, 7 ) ), next if /^parent\s+(\S+)/;
         push( @log, $1 ), next if /^    (.*)/;
         if (s/^::?//) {     # a merge commit
@@ -328,7 +384,8 @@ sub _describe_ref {
 
     return {
         id     => substr( $new, 0, 7 ),
-        author => $author,
+        author => $author_login,
+        author_name => $author_name,
         log     => join( "\n", @log ),
         changes => \@changes,
         parents => \@parents,
@@ -341,7 +398,8 @@ sub _describe_annotated_tag {
     my ( $fh, $ctx )
         = $self->_git->command_output_pipe( 'show', '--stat', '--format=raw', $ref );
     my @log;
-    my $author;
+    my $author_login;
+    my $author_name;
     my $tag;
     my $signed;
     my $commit;
@@ -372,7 +430,11 @@ sub _describe_annotated_tag {
         if ($in_header) {
             $tag = $1, next if /^tag (.+)/;
 
-            $author = $1, next if /^Tagger: .+ <([^>]+)@[^>]+>/;
+            if ( /^Tagger: (.+) <([^>@]+)@[^>]+>/ ) {
+                $author_name = $1;
+                $author_login = $2;
+                next;
+            }
 
             $in_header = 0 if /^$/;
         }
@@ -395,7 +457,8 @@ sub _describe_annotated_tag {
 
     return App::KGB::Commit->new(
         {   id     => substr( $ref, 0, 7 ),
-            author => $author,
+            author => $author_login,
+            author_name => $author_name,
             log    => join( "\n", @log ),
             branch  => $signed ? 'signed tags' : 'tags',
             changes => [ App::KGB::Change->new("(A)$tag") ],
@@ -403,18 +466,61 @@ sub _describe_annotated_tag {
     );
 }
 
+=item format_git_stat I<text>
+
+returns a colored version of I<text>, which is expected to be the result
+of C<git diff --shortstat>.
+
+=cut
+
+sub format_git_stat {
+    my ( $self, $text ) = @_;
+
+    my $result = '';
+
+    $self->init_painter;
+
+    while ( length($text) ) {
+        warn "$text" if 0;
+        if ( $text =~ s/(.*?)(\d+ files? changed)// ) {
+            $result .= $1 . $self->colorize( modification => $2 );
+            next;
+        }
+        if ( $text =~ s/(.*?)(\d+) insertions?\(\++\)// ) {
+            $result .= $1 . $self->colorize( addition => "$2(+)" );
+            next;
+        }
+        if ( $text =~ s/(.*?)(\d+) deletions?\(-+\)// ) {
+            $result .= $1 . $self->colorize( deletion => "$2(-)" );
+            next;
+        }
+
+        # nothing matched
+        $result .= $text;
+        last;
+    }
+
+    return $result;
+}
+
 sub _describe_branch_updates {
     my ( $self ) = @_;
     my %ref_branch;
     my %ref_parent;
     my @new_branches;
+    my %new_branches;
+    my @updated_branches;
+    my %branch_updates;
     my %branch_head;
     my %updated_heads;
     my @old_revs;
+    # keys are sha1s, values are hashrefs with keys branch names
+    my %branch_tips;
 
     warn "# ======== processing changesets" if 0;
     my @params = qw(--topo-order --parents --first-parent);
     my @updated;
+    my %branch_has_commits;
     for my $cs ( @{ $self->changesets } ) {
         my ( $old, $new, $ref ) = @$cs;
         warn "# considering $old $new $ref" if 0;
@@ -428,68 +534,129 @@ sub _describe_branch_updates {
 
         warn "$branch head is $new" if 0;
         $branch_head{$branch} = $new;
+        $branch_tips{$new}{$branch} = 1;
         $updated_heads{$branch} = 1;
 
         if ( $old =~ /^0+$/ ) {
             push @new_branches, $branch;
+            $new_branches{$branch} = 1;
         }
         else {
             push @updated, "$new", "^$old";
             push @old_revs, $old;
+            push @updated_branches, $branch;
+            $branch_updates{$branch} = [ $old => $new ];
         }
     }
+
+    my @existing_branches;
+    my @old_branches;
+    my @lines
+        = $self->_git->command( 'branch', '-v', '--no-abbrev' );
+    for my $l (@lines) {
+        $l =~ s/^[ *]+//;
+        my ( $ref, $sha, $ignore ) = split( ' ', $l );
+        $branch_head{$ref} = $sha;
+        $branch_tips{$sha}{$ref} = 1;
+        $ref_branch{$sha} //= $ref;
+        push @existing_branches, $ref unless $new_branches{$ref};
+        push @old_branches, $ref
+            unless $new_branches{$ref}
+            or $branch_updates{$ref};
+    }
+    warn "existing branches: @existing_branches" if 0;
+    warn "old branches: @old_branches" if 0;
 
     my @commits;
     my %reported;
 
     if (@updated) {
+        push @params, map( "^$_", @old_branches );
         warn "# git rev-list @params @updated" if 0;
         my @lines = $self->_git->command( 'rev-list', @params, @updated);
+        do { warn $_ for @lines } if 0;
 
-        my @refs;
-        for (@lines) {
-            my ( $ref, @parents ) = split(/\s+/);
+        if ( $self->squash_threshold
+            and scalar(@lines) > $self->squash_threshold )
+        {
+            for my $branch (@updated_branches) {
+                my ($old,$new) = @{ $branch_updates{$branch} };
+                my $stat = $self->_git->command( 'diff', '--shortstat',
+                    "$old..$new" );
+                my @commit_lines
+                    = $self->_git->command( 'rev-list', '--topo-order', $new,
+                    "^$old" );
+                push @commits,
+                    $self->format_message(
+                    $self->squash_msg_template,
+                    branch       => $branch,
+                    commit_id    => substr( $new, 0, 7 ),
+                    author_login => $ENV{USER},
+                    author_name  => $self->_get_full_user_name,
+                    log          => sprintf(
+                        '%d commits pushed, %s',
+                        scalar(@commit_lines), $self->format_git_stat($stat),
+                    ),
+                    );
+                warn "# $commits[-1]" if 0;
+                $branch_has_commits{$branch} = 1;
+            }
+        }
+        else {
+            my @refs;
+            for (@lines) {
+                my ( $ref, @parents ) = split(/\s+/);
 
-            push @refs, $ref;
+                push @refs, $ref;
 
-            if ( @parents and not $ref_branch{ $parents[0] } ) {
-                $ref_branch{ $parents[0] } = $ref_branch{$ref}
-                    or confess
-                    "Ref $ref with parent $parents[0] is of unknown branch";
-                warn
-                    "# $parents[0] determined to be on branch $ref_branch{$ref}"
-                    if 0;
+                if ( @parents and not $ref_branch{ $parents[0] } ) {
+                    $ref_branch{ $parents[0] } = $ref_branch{$ref}
+                        or confess
+                        "Ref $ref with parent $parents[0] is of unknown branch";
+                    warn
+                        "# $parents[0] determined to be on branch $ref_branch{$ref}"
+                        if 0;
+                }
+            }
+
+            warn "# revisions to describe: " . join( ' ', @refs ) if 0;
+
+            for my $ref (@refs) {
+                if ( $reported{$ref} ) {
+                    warn "$ref already reported" if 0;
+                    next;
+                }
+                my $cmt = App::KGB::Commit->new( $self->_describe_ref($ref) );
+                warn "# putting $ref on $ref_branch{$ref}" if 0;
+                $cmt->branch( $ref_branch{$ref} );
+                unshift @commits, $cmt;
+                $reported{$ref} = 1;
+                $branch_has_commits{ $ref_branch{$ref} } = 1;
             }
         }
 
-        warn "# revisions to describe: " . join( ' ', @refs ) if 0;
+        # see if some updated branch was without any reported commits
+        # if this case put a fast-forward notification
+        for ( @updated_branches ) {
+            next if $branch_has_commits{$_};
 
-        for my $ref (@refs) {
-            my $cmt = App::KGB::Commit->new( $self->_describe_ref($ref) );
-            warn "# putting $ref on $ref_branch{$ref}" if 0;
-            $cmt->branch( $ref_branch{$ref} );
-            unshift @commits, $cmt;
-            $reported{$ref} = 1;
+            push @commits,
+                App::KGB::Commit->new(
+                {   branch      => $_,
+                    id          => substr( $branch_updates{$_}[1], 0, 7 ),
+                    author      => $ENV{USER},
+                    author_name => $self->_get_full_user_name,
+                    log         => 'fast forward',
+                }
+                );
         }
     }
 
-    my %nb = map( ( $_ => 1 ), @new_branches );
-
     # walk the branch until it is exhausted or a revision with multiple
     # children (branch point) is reached
-    # when walking skip all commits laready reported
+    # when walking skip all commits already reported
     # terminate walk on old revs
     if ( @new_branches ) {
-        my @existing_branches;
-        my @lines
-            = $self->_git->command( 'branch', '-v', '--no-abbrev' );
-        for my $l (@lines) {
-            $l =~ s/^[ *]+//;
-            my ( $ref, $sha, $ignore ) = split( ' ', $l );
-            $branch_head{$ref} = $sha;
-            push @existing_branches, $ref unless $nb{$ref};
-        }
-        warn "existing branches: @existing_branches" if 0;
         # exclude commits in all branches that aren't part of this push
         my @exclude;
         for ( @existing_branches ) {
@@ -506,11 +673,13 @@ sub _describe_branch_updates {
                 '--first-parent', '--parents', $b, @exclude );
 
             my @br_commits;
+            my $branch_point;
 
-            my @revs;
+            my $last_rev;
             for my $line (@lines) {
                 warn "# $line" if 0;
                 my ( $rev, $parent, @other_parents ) = split( /\s+/, $line );
+                $last_rev = $rev;
                 if ( $reported{$rev} ) {
                     warn "$rev is already reported" if 0;
                     next;
@@ -529,12 +698,23 @@ sub _describe_branch_updates {
                     shift @children;
                 }
 
-                if ( @children > 1 ) {
+                # a branch point is:
+                #  * a commit with more than one child
+                #  * a tip of another branch
+                if (@children > 1
+                    or ( exists $branch_tips{$rev}
+                        and not exists $branch_tips{$rev}{$b} )
+                    )
+                {
                     unshift @br_commits,
                         App::KGB::Commit->new(
-                        log => "Branch '$b' created",
-                        id  => substr( $rev, 0, 7 ),
+                        {   log    => "Branch '$b' created",
+                            id     => substr( $rev, 0, 7 ),
+                            branch => $b,
+                        }
                         );
+                    $branch_point = $rev;
+                    warn "$b branched at $rev" if 0;
                     last;
                 }
                 if ($parent) {
@@ -549,17 +729,54 @@ sub _describe_branch_updates {
                 $reported{$rev} = 1;
             }
 
-            push @commits, @br_commits;
-            push @commits,
-                App::KGB::Commit->new(
-                {   id      => substr( $branch_head{$b}, 0, 7 ),
-                    log     => "branch created",
-                    branch  => $b,
-                    changes => [],
+            if ( not $branch_point and $last_rev and $ref_parent{$last_rev} )
+            {
+                $branch_point = $ref_parent{$last_rev};
+                warn "$b branched at $branch_point" if 0 and $branch_point;
+            }
+
+            if ( $self->squash_threshold
+                and scalar(@br_commits) > $self->squash_threshold )
+            {
+                my $log = sprintf( 'New branch with %d commits pushed',
+                    scalar(@br_commits) );
+                if ($branch_point) {
+                    $log .= ', '
+                        . $self->format_git_stat(
+                        $self->_git->command(
+                            'diff', '--shortstat', "$branch_point..$b"
+                        )
+                        );
+                    $log .= " since ";
+                    $log .= "$ref_branch{$branch_point}/"
+                        if $ref_branch{$branch_point};
+                    $log .= substr( $branch_point, 0, 7 );
                 }
-                ) unless @br_commits;
+                push @commits,
+                    $self->format_message(
+                    $self->squash_msg_template,
+                    branch       => $b,
+                    author_login => $ENV{USER},
+                    author_name  => $self->_get_full_user_name,
+                    log          => $log,
+                    commit_id    => substr( $branch_head{$b}, 0, 7 ),
+                    );
+            }
+            else {
+                push @commits, @br_commits;
+                push @commits,
+                    App::KGB::Commit->new(
+                    {   id      => substr( $branch_head{$b}, 0, 7 ),
+                        log     => "branch created",
+                        branch  => $b,
+                        changes => [],
+                    }
+                    ) unless @br_commits;
+            }
         }
     }
+
+    warn '# ' . scalar(@commits) . ' commits queued' if 0;
 
     push @{ $self->_commits }, @commits;
 }
@@ -680,6 +897,7 @@ EOF
                         changes => [],
                         log     => 'branch created',
                         author  => $c->{author},
+                        author_name => $c->{author_name},
                     }
                     );
             }
@@ -712,7 +930,7 @@ EOF
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright (c) 2009 Damyan Ivanov
+Copyright (c) 2009, 2013 Damyan Ivanov
 
 Based on the shell post-receive hook by Andy Parkins
 

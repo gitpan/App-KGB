@@ -82,11 +82,14 @@ system 'git', 'init', '--bare';
 use Cwd;
 my $R = getcwd;
 
+my $hook_log;
+
 if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
     diag "will try to send notifications to locally running bot";
+    $hook_log = "$dir/hook.log";
     write_tmp 'there.git/hooks/post-receive', <<"EOF";
 #!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $dir/hook.log 2>&1
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $hook_log 2>&1
 EOF
 }
 else {
@@ -134,11 +137,15 @@ my $c = new_ok(
 
 sub push_ok {
     write_tmp 'reflog', '';
+    unlink $hook_log if $hook_log and -s $hook_log;
+
     my $ignore = $git->command( [qw( push origin --all )], { STDERR => 0 } );
     $ignore = $git->command( [qw( push origin --tags )], { STDERR => 0 } );
 
     $c->_parse_reflog;
     $c->_detect_commits;
+
+    diag `cat $hook_log` if $hook_log and -s $hook_log;
 }
 
 my %commits;

@@ -1,3 +1,27 @@
+1.27 (2013-05-29)
+ * client:
+   + --repository option is no longer required
+   + add support for entirely client-constructed notifications
+   + verbose complaint when a message cannot be encoded as JSON
+   + add support for batching messages
+   + Git: include author name in commit information (Debian: #700319)
+   + Git: add support for configuring some settings via git-config
+   + Git: implement commit squashing for large branch updates
+ * bot:
+   + support miltiple relay messages per request
+   + properly handle multi-line relayed messages
+   + add rate limit support to JSON message relay implementation
+   + Fix a problem where authentication was sent too late, due to throttling
+     caused by JOIN commands sent earlier. This change uses the AutoJoin plugin
+     that knows how to interact with NickServID properly. Patch contributed by
+     poco-irc maintainer, Hinrik Orn Sigurdsson.
+ * both:
+   + add support for ${project} substitution in web_link
+   + documentation improvements
+ * building
+   + Add Time::Piece and IPC::Run to Build.PL.
+   + Build.PL: create LICENSE file during `make dist'.
+
 1.26 (2013-03-28)
 
   * update kgb-client.conf manual with the new options

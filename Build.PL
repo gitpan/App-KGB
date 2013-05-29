@@ -3,11 +3,14 @@ use strict;
 use warnings;
 use lib qw(privinc);
 use My::Builder;
+use utf8;
 
 my $builder = My::Builder->new(
     dist_name   => 'App-KGB',
     dist_version_from => 'lib/App/KGB.pm',
-    license        => 'gpl',
+    dist_author => [ "Martín Ferrari", "Damyan Ivanov", "gregor herrmann" ],
+    license        => 'gpl2',
+    create_license => 1,
     configure_requires => {
         'Module::Build'       => '0.40',
         perl                  => '5.010',
@@ -28,19 +31,21 @@ my $builder = My::Builder->new(
         'DirHandle'                    => 0,
         'File::Touch'                  => 0,
         'Git'                          => 0,
+        'IPC::Run'                     => 0,
         'IPC::System::Simple'          => 0,
         'JSON'                         => 0,
         'JSON::RPC::Client'            => 0,
+        'POE'                          => 0,
         'POE::Component::IRC'          => '5.56',
         'POE::Component::Server::SOAP' => 0,
-        'POE'                          => 0,
         'Proc::PID::File'              => 0,
-        'Schedule::RateLimiter'        => 0,
         'SOAP::Lite'                   => 0,
-        'WWW::Shorten'                 => 0,
+        'SVN::Core'                    => 0,
         'SVN::Fs'                      => 0,
         'SVN::Repos'                   => 0,
-        'SVN::Core'                    => 0,
+        'Schedule::RateLimiter'        => 0,
+        'Time::Piece'                  => 0,
+        'WWW::Shorten'                 => 0,
         'YAML'                         => 0,
     },
     bindoc_dirs  => [qw(script sbin)],

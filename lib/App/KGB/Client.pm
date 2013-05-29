@@ -2,11 +2,13 @@ package App::KGB::Client;
 use utf8;
 require v5.10.0;
 
+use feature 'switch';
+
 # vim: ts=4:sw=4:et:ai:sts=4
 #
 # KGB - an IRC bot helping collaboration
 # Copyright © 2008 Martín Ferrari
-# Copyright © 2009,2010,2011,2012 Damyan Ivanov
+# Copyright © 2009,2010,2011,2012,2013 Damyan Ivanov
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -83,6 +85,14 @@ exhausted, in which case an exception is thrown.
 
 When shuffling, preference is added to the last server used by the client, or
 by other clients (given C<status_dir> is configured).
+
+=item B<batch_messages>
+
+If true, the notifications are sent as a batch in one request to the server.
+Useful with VCS that send many changes a time (e.g. Git).
+
+Defaults to false, but will be changed later after some grace period for server
+upgrade.
 
 =item B<br_mod_re>
 
@@ -188,12 +198,132 @@ A web link template to be sent to the server. The following items are expanded:
 
 =item ${commit}
 
+=item ${project}
+
 =back
 
 =item B<short_url_service> I<service>
 
 A L<WWW::Shorten> service to use for shortening the B<web_link>. See
 L<WWW::Shorten> for the list of supported services.
+
+=item msg_template I<string>
+
+Provides a way to customize the notifications' appearance on IRC. When present,
+all message construction is done on the client and the prepared messages
+(possibly with colors etc) are sent to the server for relaying to IRC.
+
+The following special items are recognized and replaced with the respective
+commit elements.
+
+=over
+
+=item ${project_id}
+
+The ID of the project.
+
+=item ${author_login}
+
+The login of the author (e.g. "joe").
+
+=item ${author_name}
+
+The name of the commit author (e.g. "Joe Random")
+
+=item ${branch}
+
+The branch of the commit.
+
+=item ${module}
+
+The module of the commit.
+
+=item ${commit}
+=item ${revision}
+
+The ID of the commit.
+
+=item ${path}
+
+The changed path(s).
+
+=item ${log}
+
+The log message of the commit.
+
+=item ${web}
+
+The web link associated with the commit. Replaced with the empty string unless
+the B<web_link> option is also given.
+
+=back
+
+=item style I<hash reference>
+
+Provides a color map for different parts of the message. The following keys are
+supported. Defaults are used when keys are missing in the hash. B<use_color>
+must be true for this to have any effect. Used only when B<msg_template> is
+also given.
+
+=over
+
+=item revision
+=item commit_id
+
+Commit ID. Default: none.
+
+=item path
+
+Changed path. Default: teal.
+
+Depending on the action performed to the path, additional coloring is made:
+
+=over
+
+=item addition
+
+Used for added paths. Default: green.
+
+=item modification
+
+Used for modified paths. Default: teal.
+
+=item deletion
+
+Used for deleted paths. Default: bold red.
+
+=item replacement
+Used for replaced paths (a Subversion concept). Default: brown.
+
+=item prop_change
+
+Used for paths with changed properties (a Subversion concept), combined with
+other colors depending on the action -- addition, modification or replacement.
+Default: underline.
+
+=back
+
+=item author
+
+Commit author. Default: green.
+
+=item branch
+
+Commit branch. Default: brown.
+
+=item module
+
+Project module. Default: purple.
+
+=item web
+
+URL to commit information. Default: silver.
+
+=item separator
+
+The separator before the commit log. Default: none.
+
+=back
 
 =back
 
@@ -207,12 +337,18 @@ use DirHandle ();
 use SOAP::Lite;
 use Getopt::Long;
 use List::Util ();
+use User::pwent;
 use YAML ();
 use base 'Class::Accessor::Fast';
 __PACKAGE__->mk_accessors(
     qw( repo_id servers br_mod_re mod_br_re module ignore_branch
         single_line_commits use_irc_notices use_color status_dir verbose protocol
-        web_link short_url_service _last_server )
+        web_link short_url_service _last_server
+        msg_template
+        style colors painter
+        batch_messages
+        _full_user_name
+        )
 );
 
 =head1 CONSTRUCTOR
@@ -546,17 +682,199 @@ sub note_last_server {
     );
 }
 
-=item process_commit ($commit)
+use constant rev_prefix => '';
 
-Processes a single commit, trying to send the changes summary to each of the
-servers, defined in B<servers>, until some server is successfuly notified.
+=item init_painter
+
+Creates an internal instance of L<App::KGB::Painter> used to color message
+elements.
+
+Does nothing if I<use_color> is false or if painter has been already created.
 
 =cut
 
-use constant rev_prefix => '';
+sub init_painter {
+    my $self = shift;
+
+    return unless $self->use_color;
+    return if $self->painter;
+
+    require App::KGB::Painter;
+    $self->painter(
+        App::KGB::Painter->new( { item_colors => $self->colors } ) );
+}
+
+=item colorize I<category> => I<text>
+
+Returns a colored version of I<text>. If there is no painter, returns just
+I<text>.
+
+=cut
+
+sub colorize {
+    my ( $self, $category, $text ) = @_;
+
+    return $text unless $self->painter;
+
+    return $self->painter->colorize( $category => $text );
+}
+
+our %action_styles = (
+    A => 'addition',
+    M => 'modification',
+    D => 'deletion',
+    R => 'replacement',
+);
+
+=item colorize_change I<change>
+
+returns a colorized string representing a single change
+
+=cut
+
+sub colorize_change {
+    my ( $self, $c ) = @_;
+
+    my $action_style = $action_styles{ $c->action };
+
+    my $text = $self->colorize( $action_style => $c->path );
+
+    $text = $self->colorize( 'prop_change' => $text ) if $c->prop_change;
+
+    return $text;
+}
+
+our $MAGIC_MAX_FILES = 4;
+
+=item colorize_changes \@changes
+
+returns a colorized string of all commit's changes
+
+=cut
+
+sub colorize_changes {
+    my ( $self, $changes ) = @_;
+
+    my $changed_files = scalar @$changes;
+
+    if ( $changed_files > $MAGIC_MAX_FILES ) {
+        my %dirs;
+        for my $c (@$changes) {
+            my $dir = dirname( $c->path );
+            $dirs{$dir}++;
+        }
+
+        my $dirs = scalar( keys %dirs );
+
+        my $path_string = join( ' ',
+            ( $dirs > 1 )
+            ? sprintf( "(%d files in %d dirs)", $changed_files, $dirs )
+            : sprintf( "(%d files)",            $changed_files ) );
+
+        return $self->colorize( path => $path_string );
+    }
+    elsif ($changed_files) {
+        return join( ' ', map { $self->colorize_change($_) } @$changes );
+    }
+    else {
+        return '';
+    }
+}
+
+=item format_message %details
+
+Returns a formatted message, ready to be sent to the servers. The message is
+formatted according to the B<message_format> configuration parameter, honouring
+B<colors> and B<use_color>.
+
+=cut
+
+sub format_message {
+    my ( $self, $msg, %p ) = @_;
+
+    my $commit = $p{commit};
+
+    $self->init_painter;
+
+    my $result = '';
+    warn "# msg = '$msg'" if 0;
+
+    while ( $msg =~ /\$\{([^{}]+)?\{([^{}]+)\}([^{}]+)?\}/ps ) {
+        my ( $pre, $token, $post ) = ( $1, $2, $3 );
+        warn "# pre = '$pre' token = '$token' post = '$post'" if 0;
+        $result .= ${^PREMATCH};
+        $msg = ${^POSTMATCH};
+        warn "# msg is now '$msg'" if 0;
+        my @r;
+        given ($token) {
+            when ('project') { push @r, project => $self->repo_id }
+            when ('author-login') {
+                push @r, author => $commit
+                    ? $commit->author
+                    : $p{author_login}
+            }
+            when ('author-name') {
+                push @r, author => $commit
+                    ? $commit->author_name
+                    : $p{author_name}
+            }
+            when ('branch') {
+                push @r, branch => $commit ? $commit->branch : $p{branch}
+            }
+            when ('module') {
+                push @r, module => $self->module
+                    // ( $commit ? $commit->module : $p{module} )
+            }
+            when ('web-link') { push @r, web => $p{web_link} }
+            when ('commit') {
+                push @r, commit_id => $commit ? $commit->id : $p{commit_id}
+            }
+            when ('log') { push @r, log => $commit ? $commit->log : $p{log} }
+            when ('log-first-line') {
+                push @r, log => ( split( /\n/, $commit->log ) )[0]
+            }
+            when ('changes') {
+                push @r, '' => $self->colorize_changes( $commit->changes )
+                    if $commit and $commit->changes;
+            }
+            default {
+                push @r, '' => "Unknown item '$_'"
+            }
+        }
+        my ( $category, $item ) = @r;
+
+        warn "# item = '$item'" if 0;
+        next unless defined($item) and $item ne '';
+
+        $result .= $pre // '';
+        $result .=
+            ( $category eq '' )
+            ? $item
+            : $self->colorize( $category => $item );
+        $result .= $post // '';
+    }
+    $result .= $msg;
+
+    return $result;
+}
+
+=item process_commit ($commit)
+
+Processes a single commit, returning something for sending to the remote
+server. I<Something> is either a reference to array of arguments to be passed
+to L<App::KGB::ServerRef>'s send_changes method, or, in message-relay mode, a
+plain scalar string representing the commit.
+
+If $commit is a plain scalar (not a reference), then it is assumed to be an
+already processed string and is returned directly.
+
+=cut
 
 sub process_commit {
     my ( $self, $commit ) = @_;
+
+    # plain strings are already processed by the VCS-specific module
+    return $commit unless ref($commit);
 
     my $module = $self->module // $commit->module;
     my $branch = $commit->branch;
@@ -571,13 +889,90 @@ sub process_commit {
 
     my $web_link = $self->web_link;
     if ( defined($web_link) ) {
-        $web_link = $self->expand_link( $web_link,
-            { branch => $branch, module => $module, commit => $commit->id } );
+        $web_link = $self->expand_link(
+            $web_link,
+            {   branch  => $branch,
+                module  => $module,
+                commit  => $commit->id,
+                project => $self->repo_id
+            }
+        );
         $web_link = $self->shorten_url($web_link);
     }
 
     $branch = undef
         if $branch and $branch eq ( $self->ignore_branch // '' );
+
+    # All data prepared. Now, how do we represent this commit?
+
+    # A pre-formatted, pre-coloured string, if msg_template is configured
+    return $self->format_message(
+        $self->msg_template,
+        commit   => $commit,
+        branch   => $branch,
+        module   => $module,
+        web_link => $web_link
+    ) if $self->msg_template;
+
+    # otherwise, prepare things for send_changes()
+    my @args = ( $commit, $branch, $module );
+    my %extra;
+    $extra{web_link} = $web_link if defined($web_link);
+    $extra{use_irc_notices} = $self->use_irc_notices
+        if $self->use_irc_notices;
+    $extra{use_color} = $self->use_color;
+    push @args, \%extra if %extra;
+
+    return \@args;
+}
+
+=item process
+
+The main processing method. Calls B<describe_commit> and while it returns true
+values, gives them to B<process_commit> and send the result to the server.
+
+If B<batch_messages> flag is true, relays accumulated messages after
+processing.
+
+=cut
+
+sub process {
+    my $self = shift;
+
+    my @messages;
+
+    while ( my $commit = $self->describe_commit ) {
+        my $data = $self->process_commit($commit);
+
+        if (ref($data)) {
+            # a structure to be interpreted by the server
+            $self->send_changes($data);
+        }
+        else {
+            # a plain string
+            if ( $self->batch_messages ) {
+                # batch it, will send the whole batch in one transaction below
+                push @messages, $data;
+            }
+            else {
+                # relay immediately
+                $self->relay_message($data);
+            }
+        }
+    }
+
+    $self->relay_message( \@messages ) if $self->batch_messages and @messages;
+}
+
+=item send_changes \@args
+
+Tries to send the changes described in the given array reference to all
+configured servers.
+
+=cut
+
+sub send_changes {
+    my ( $self, $args ) = @_;
 
     my @servers = $self->shuffle_servers;
 
@@ -585,21 +980,14 @@ sub process_commit {
     my $failure;
     for my $srv (@servers) {
         $failure = eval {
-            my @args = ( $commit, $branch, $module );
-            my %extra;
-            $extra{web_link} = $web_link if defined($web_link);
-            $extra{use_irc_notices} = $self->use_irc_notices
-                if $self->use_irc_notices;
-            $extra{use_color} = $self->use_color;
-            push @args, \%extra if %extra;
-            $srv->send_changes( $self, $self->protocol, @args );
+            $srv->send_changes( $self, $self->protocol, @$args );
             $self->_last_server($srv);
 
             $self->note_last_server($srv);
             0;
         } // 1;
 
-        warn $@ if $@;
+        warn $@ if $failure;
 
         last unless $failure;
     }
@@ -608,19 +996,52 @@ sub process_commit {
         if $failure;
 }
 
-=item process
+=item relay_message I<message>
 
-The main processing method. Calls B<describe_commit> and while it returns true
-values, gives them to B<process_commit>.
+Send a simple message to servers for relaying. Implements the --relay-msg
+command line option.
 
 =cut
 
-sub process {
+sub relay_message {
     my $self = shift;
+    my $msg = shift // die "Syntax: \$client->relay_message(msg)";
 
-    while ( my $commit = $self->describe_commit ) {
-        $self->process_commit($commit);
+    my @servers = $self->shuffle_servers;
+
+    # try all servers in turn until someone succeeds
+    my $failure;
+    for my $srv (@servers) {
+        $failure = eval {
+            $srv->relay_message( $self, $msg,
+                { use_irc_notices => $self->use_irc_notices } );
+            $self->_last_server($srv);
+
+            $self->note_last_server($srv);
+            0;
+        } // 1;
+
+        warn $@ if $failure;
+
+        last unless $failure;
     }
+
+    die "Unable to relay message. All servers failed\n"
+        if $failure;
+}
+
+sub _get_full_user_name {
+    my $self = shift;
+    my $login = shift // $ENV{USER};
+
+    return $self->_full_user_name if $self->_full_user_name;
+
+    my $user = getpwnam($login);
+    ( my $full_name = $user->gecos ) =~ s/,.*//;
+
+    $self->_full_user_name($full_name);
+
+    return $full_name;
 }
 
 1;

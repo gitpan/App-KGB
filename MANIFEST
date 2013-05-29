@@ -25,7 +25,9 @@ lib/App/KGB/Client/RelayMsg.pm
 lib/App/KGB/Client/ServerRef.pm
 lib/App/KGB/Client/Subversion.pm
 lib/App/KGB/Commit.pm
+lib/App/KGB/Painter.pm
 lib/WWW/Shorten/Debli.pm
+LICENSE
 Makefile
 man5/kgb-client.conf.pod
 man5/kgb.conf.pod
@@ -47,6 +49,9 @@ t/50-client.t
 t/51-client_branch_module.t
 t/52-client-git.t
 t/53-client-git-merges.t
+t/54-client-git-squash.t
+t/55-client-git-merges-ff.t
+t/56-client-git-ff-merge-2.t
 t/critic.t
 t/perlcriticrc
 t/pod-coverage.t

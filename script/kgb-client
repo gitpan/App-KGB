@@ -45,6 +45,8 @@ kgb-client - relay commits to KGB servers
                     --short-url-service I<service>
                     --status-dir I<directory>
                     --[no]-use-color
+                    --message-template I<template>
+                    --batch-messages
 
 =item B<kgb-client> I<option>... I</svn/repo> I<revision>
 
@@ -92,7 +94,7 @@ otherwise, all the options in the configuration file can also be used on
 command line, prefixing them with two dashes. E.g. C<repo-id> becomes
 C<--repo-id>.
 
-Options given ont he command line take precedence over configuration file.
+Options given on the command line take precedence over configuration file.
 
 =head1 FAKE COMMIT MODE
 
@@ -136,10 +138,11 @@ B<kgb-client> shall be installed as a B<post-receive> hook. Something along the
 following shall do:
 
     #!/bin/sh
-    /path/to/kgb-client --git-reflog - --conf /path/to.conf ...
+    exec /path/to/kgb-client --conf /path/to.conf ...
 
-B<--git-reflog -> will make B<kgb-client> read the reflog information from standard
-input as any standard Git post-receive hook.
+By default, B<kgb-client> will read the reflog information from standard input
+as any standard Git post-receive hook. See B<--git-reflog> option if something
+else is wanted.
 
 There are other ways to give kgb-client information about Git reflog, mostly
 useful when debugging on in unusual situations. See L<App::KGB::Client::Git>.
@@ -148,6 +151,7 @@ The following settings can be configured via L<git-config(1)>:
 
 =over
 
+=item conf
 =item web-link
 
 =back
@@ -199,7 +203,8 @@ my ($conf_file,      $uri,        $proxy,
     $status_dir,     $web_link,   $short_url_service,
     $fake,           $protocol,   $relay_msg,
     $help,           $man,        $use_irc_notices,
-    $use_color,
+    $use_color,      %colors,     $msg_template,
+    $batch_messages,
 );
 
 # defaults
@@ -247,6 +252,26 @@ sub from_conf {
     }
 }
 
+# detect repository type
+if ( exists $ENV{GIT_DIR} ) {
+    die "Unable to determine repository type\n"
+        . "both GIT_DIR and CVSROOT present in the environment.\n"
+        . "Please use --repository to force repository type.\n"
+        if exists $ENV{CVSROOT};
+
+    $repo_type = 'git';
+
+    # default configuration file
+    $conf_file //= `git config kgb.conf`;
+}
+elsif ( exists $ENV{CVSROOT} ) {
+    $repo_type = 'cvs';
+}
+else {
+    $repo_type = 'svn';
+}
+
+
 if( $conf_file ) {
     $conf = YAML::LoadFile($conf_file)
         or die "Error loading config from $conf_file\n";
@@ -274,6 +299,9 @@ if( $conf_file ) {
     from_conf( 'relay_msg'                 => \$relay_msg );
     from_conf( 'use-color'                 => \$use_color );
     from_conf( 'servers'                   => \@servers );
+    from_conf( 'color-scheme'              => \%colors );
+    from_conf( 'message-template'          => \$msg_template );
+    from_conf( 'batch-messages'            => \$batch_messages );
 }
 
 
@@ -304,6 +332,8 @@ GetOptions(
     'protocol=s'                 => \$protocol,
     'relay-msg'                  => \$relay_msg,
     'use-color!'                 => \$use_color,
+    'message-template=s'         => \$msg_template,
+    'batch-messages!'            => \$batch_messages,
 ) or pod2usage(2);
 
 if ( $br_mod_re_swap ) {
@@ -342,32 +372,8 @@ if ( $relay_msg ) {
     $relay_msg = join( ' ', @ARGV );
 }
 
-if ( not $repo_type ) {
-    if ( exists $ENV{GIT_DIR} ) {
-        die "Unable to determine repository type\n"
-            . "both GIT_DIR and CVSROOT present in the environment.\n"
-            . "Please use --repository to force repository type.\n"
-            if exists $ENV{CVSROOT};
-
-        $repo_type = 'git';
-    }
-    elsif ( exists $ENV{CVSROOT} ) {
-        $repo_type = 'cvs';
-    }
-    else {
-        $repo_type = 'svn';
-    }
-}
-
 use Cwd();
 use File::Spec;
-
-if ( $repo_type eq 'git' and not $module and $ENV{GIT_DIR} ) {
-    my @dirs = File::Spec->splitdir( Cwd::abs_path( $ENV{GIT_DIR} ) );
-    pop @dirs if @dirs and $dirs[-1] eq '.git';
-    $module = $dirs[-1];
-    $module =~ s/\.git$// if $module;
-}
 
 my @client_args = (
     repo_id             => $repo_id,
@@ -384,6 +390,9 @@ my @client_args = (
     web_link            => $web_link,
     short_url_service   => $short_url_service,
     protocol            => $protocol,
+    colors              => \%colors,
+    msg_template        => $msg_template,
+    batch_messages      => $batch_messages,
 );
 
 push @client_args, ( relay_message => $relay_msg ) if $relay_msg;

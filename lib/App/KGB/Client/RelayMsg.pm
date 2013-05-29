@@ -104,7 +104,7 @@ sub process {
             0;
         } // 1;
 
-        warn $@ if $@;
+        warn $@ if $failure;
 
         last unless $failure;
     }

@@ -89,7 +89,7 @@ if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
     $hook_log = "$dir/hook.log";
     write_tmp 'there.git/hooks/post-receive', <<"EOF";
 #!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $hook_log 2>&1
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $dir >> $hook_log 2>&1
 EOF
 }
 else {
@@ -150,9 +150,10 @@ sub push_ok {
 
 my %commits;
 sub do_commit {
-    $git->command_oneline( 'commit', '-m', shift ) =~ /\[(\w+).*\s+(\w+)\]/;
+    $git->command_oneline( 'commit', '-a', '-m', shift ) =~ /\[(\w+).*\s+(\w+)\]/;
     push @{ $commits{$1} }, $2;
     diag "commit $2 in branch $1" unless $tmp_cleanup;
+    return $2;
 }
 
 my $commit;
@@ -169,59 +170,31 @@ ok( defined($commit), 'initial import commit' );
 is( $c->describe_commit, undef, 'no more commits' );
 
 #### branch, two changes, merge. then the changes should be reported only once
-my $b1 = 'a-new';
+my $b1 = 'separate';
 $git->command( [ 'checkout', '-b', $b1, 'master' ],
     { STDERR => 0 } );
 w( 'new', 'content' );
 $git->command( 'add', 'new' );
-$git->command( 'commit', '-m', 'created new content' );
-w( 'new', 'more content' );
-$git->command( 'commit', '-a', '-m', 'updated new content' );
+my $c1 = do_commit('created new content');
+
+push_ok;
+
+$commit = $c->describe_commit;
+ok( defined($commit), 'changing commit' );
+is( $commit->branch, $b1, "branch is '$b1'" );
+is( $commit->log, 'created new content' );
+is( $c->describe_commit, undef, 'no more commits' );
+
 $git->command( 'checkout', '-q', 'master' );
-$git->command( 'merge', '--no-ff', '-m', "merge '$b1' into master", $b1 );
+$git->command( 'merge', '--ff', $b1 );
 
-# same with a branch name sorting after 'master'
-my $b2 = 'new-content';
-$git->command( [ 'checkout', '-b', $b2, 'master' ],
-    { STDERR => 0 } );
-w( 'new', 'content' );
-$git->command( 'add', 'new' );
-$git->command( 'commit', '-m', 'created new content' );
-w( 'new', 'more content' );
-$git->command( 'commit', '-a', '-m', 'updated new content' );
-$git->command( 'checkout', '-q', 'master' );
-$git->command( 'merge', '--no-ff', '-m', "merge '$b2' into master", $b2 );
-push_ok();
+push_ok;
 
 $commit = $c->describe_commit;
-ok( defined($commit), 'merge commit exists' );
+ok( defined($commit), 'ff commit exists' );
 is( $commit->branch, 'master' );
-is( $commit->log,    "merge '$b1' into master" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), 'merge commit exists' );
-is( $commit->branch, 'master' );
-is( $commit->log,    "merge '$b2' into master" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "first $b1 commit exists" );
-is( $commit->branch, $b1 );
-is( $commit->log,    "created new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "second $b1 commit exists" );
-is( $commit->branch, $b1 );
-is( $commit->log,    "updated new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "first $b2 commit exists" );
-is( $commit->branch, $b2 );
-is( $commit->log,    "created new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "second $b2 commit exists" );
-is( $commit->branch, $b2 );
-is( $commit->log,    "updated new content" );
+is( $commit->id,     $c1 );
+is( $commit->log,    "fast forward" );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;

@@ -171,7 +171,7 @@ sub send_changes {
     my $commit_id = $commit->id;
     my $commit_author = $commit->author;
     my $commit_log = $commit->log;
-    my @commit_changes = @{ $commit->changes };
+    my @commit_changes = $commit->changes ? @{ $commit->changes } : ();
     my $password = $self->password;
 
     given ( $client->single_line_commits ) {
@@ -269,7 +269,24 @@ sub send_changes_json {
     $rpc->ua->timeout($self->timeout // 15);
     $message->{id} = 1;
     $message->{version} = '1.1';
-    my $hash = sha1_hex( $self->password, $repo_id, JSON::encode_json($message) );
+    my $json = eval { JSON::encode_json($message); };
+    unless ($json) {
+        my $dump;
+        if ( require Devel::PartialDump ) {
+            $dump = Devel::PartialDump->new->dump($message);
+        }
+        elsif ( require Data::Dumper ) {
+            $dump = Data::Dumper::Dump($message);
+        }
+        else {
+            $dump = '(Neither Devel::PartialDump nor Data::Dumper available)';
+        }
+
+        confess "Unable to encode message structure as JSON\n" . $dump . "\n"
+            . $@;
+    }
+
+    my $hash = sha1_hex( $self->password, $repo_id, $json );
 
     $rpc->ua->default_header( 'X-KGB-Auth', $hash );
     $rpc->ua->default_header( 'X-KGB-Project', $repo_id );

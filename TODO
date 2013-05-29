@@ -1,13 +1,10 @@
 * split kgb-bot into manageable modules
 * start a real test bot for automated tests
+  - this is now possible via eg/start-test-bot-[12] and 'TEST_KGB_BOT_RUNNING=1
+    make test'
+    even if useful for local testing the results aren't verified via t/*.t
 * write tests for CVS client
 * Move URL shortening to bot (configurable)
-* ability to use client-driven color schemes. Can be used to disable all color.
-  + disabling all color is already possible (with use-color: 0)
-    perhaps client-driven colors are not really needed
 * admin/sync -- needs a plan
-* Git: discover merges and don't notify about commits that should have been
-  notified about before
 * client: verify config file structure strictly and die (warn?) if something is
-* wrong
-  for example, servers should be a list of maps, and not a map
+  wrong. for example, servers should be a list of maps, and not a map

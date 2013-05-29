@@ -164,6 +164,7 @@ sub describe_commit {
         {   id      => $self->revision,
             changes => \@changes,
             author  => $author,
+            author_name => $self->_get_full_user_name($author),
             log     => $log,
         }
     );

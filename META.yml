@@ -1,7 +1,9 @@
 ---
 abstract: 'collaborative IRC helper'
 author:
-  - unknown
+  - 'Martín Ferrari'
+  - 'Damyan Ivanov'
+  - 'gregor herrmann'
 build_requires:
   Test::Compile: 0
   Test::Perl::Critic: 0
@@ -14,7 +16,7 @@ configure_requires:
   Module::Build: 0.40
   perl: 5.010
 dynamic_config: 1
-generated_by: 'Module::Build version 0.4001, CPAN::Meta::Converter version 2.120921'
+generated_by: 'Module::Build version 0.4005, CPAN::Meta::Converter version 2.120921'
 license: open_source
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -26,7 +28,7 @@ no_index:
 provides:
   App::KGB:
     file: lib/App/KGB.pm
-    version: 1.26
+    version: 1.27
   App::KGB::API:
     file: lib/App/KGB/API.pm
     version: 0
@@ -57,6 +59,9 @@ provides:
   App::KGB::Commit:
     file: lib/App/KGB/Commit.pm
     version: 0
+  App::KGB::Painter:
+    file: lib/App/KGB/Painter.pm
+    version: 0
   WWW::Shorten::Debli:
     file: lib/WWW/Shorten/Debli.pm
     version: 0.1
@@ -66,6 +71,7 @@ requires:
   DirHandle: 0
   File::Touch: 0
   Git: 0
+  IPC::Run: 0
   IPC::System::Simple: 0
   JSON: 0
   JSON::RPC::Client: 0
@@ -78,9 +84,10 @@ requires:
   SVN::Fs: 0
   SVN::Repos: 0
   Schedule::RateLimiter: 0
+  Time::Piece: 0
   WWW::Shorten: 0
   YAML: 0
   perl: 5.010
 resources:
-  license: http://www.gnu.org/licenses/old-licenses/gpl-1.0.txt
-version: 1.26
+  license: http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+version: 1.27

@@ -58,6 +58,15 @@ sub is_irc_output {
     eq_or_diff( "" . <$dump_fh>, $wanted );
 }
 
+sub strip_irc_colors {
+    my $in = shift;
+
+    $in =~ s/\x03\d\d//g;
+    $in =~ s/[\x00-\x1f]+//g;
+
+    return $in;
+}
+
 my $remote = "$dir/there.git";
 my $local = "$dir/here";
 
@@ -100,6 +109,8 @@ EOF
 }
 
 chmod 0755, "$dir/there.git/hooks/post-receive";
+
+system("GIT_DIR=$dir/there.git git config --add kgb.squash-threshold 1");
 
 mkdir $local;
 $ENV{GIT_DIR} = "$local/.git";
@@ -150,7 +161,7 @@ sub push_ok {
 
 my %commits;
 sub do_commit {
-    $git->command_oneline( 'commit', '-m', shift ) =~ /\[(\w+).*\s+(\w+)\]/;
+    $git->command_oneline( 'commit', '-a', '-m', shift ) =~ /\[(\w+).*\s+(\w+)\]/;
     push @{ $commits{$1} }, $2;
     diag "commit $2 in branch $1" unless $tmp_cleanup;
 }
@@ -162,66 +173,42 @@ w( 'old', 'content' );
 $git->command( 'add', '.' );
 do_commit('import old content');
 $git->command( 'remote', 'add', 'origin', "file://$remote" );
+
 push_ok;
 
 $commit = $c->describe_commit;
-ok( defined($commit), 'initial import commit' );
-is( $c->describe_commit, undef, 'no more commits' );
+ok( defined($commit), 'first commit exists' );
+is( $commit->branch, 'master' );
+is( $commit->log,    "import old content" );
 
-#### branch, two changes, merge. then the changes should be reported only once
-my $b1 = 'a-new';
-$git->command( [ 'checkout', '-b', $b1, 'master' ],
-    { STDERR => 0 } );
 w( 'new', 'content' );
 $git->command( 'add', 'new' );
 $git->command( 'commit', '-m', 'created new content' );
 w( 'new', 'more content' );
 $git->command( 'commit', '-a', '-m', 'updated new content' );
-$git->command( 'checkout', '-q', 'master' );
-$git->command( 'merge', '--no-ff', '-m', "merge '$b1' into master", $b1 );
+a( 'new', 'even more content' );
+$git->command( 'commit', '-a', '-m', 'another update' );
 
-# same with a branch name sorting after 'master'
-my $b2 = 'new-content';
-$git->command( [ 'checkout', '-b', $b2, 'master' ],
-    { STDERR => 0 } );
-w( 'new', 'content' );
-$git->command( 'add', 'new' );
-$git->command( 'commit', '-m', 'created new content' );
-w( 'new', 'more content' );
-$git->command( 'commit', '-a', '-m', 'updated new content' );
-$git->command( 'checkout', '-q', 'master' );
-$git->command( 'merge', '--no-ff', '-m', "merge '$b2' into master", $b2 );
-push_ok();
+push_ok;
 
 $commit = $c->describe_commit;
-ok( defined($commit), 'merge commit exists' );
-is( $commit->branch, 'master' );
-is( $commit->log,    "merge '$b1' into master" );
+ok( defined($commit), 'squashed commit exists' ) or BAIL_OUT 'will fail anyway';
+ok( !ref($commit), 'squashed commit is a plain string' ) or BAIL_OUT 'will fail anyway';
+like( strip_irc_colors($commit), qr/\($ENV{USER}\) master [0-9a-f]{7} test\/there 3 commits pushed,  1 file changed, 2\(\+\)$/ );
+
+### multiple commits in a new branch
+$git->command( 'checkout', '-q', '-b', 'feature', 'master' );
+a( 'new', 'additional content' );
+do_commit( 'additional content in a new branch' );
+a( 'new', 'even more additional content' );
+do_commit( 'second commit in the new branch' );
+push_ok;
 
 $commit = $c->describe_commit;
-ok( defined($commit), 'merge commit exists' );
-is( $commit->branch, 'master' );
-is( $commit->log,    "merge '$b2' into master" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "first $b1 commit exists" );
-is( $commit->branch, $b1 );
-is( $commit->log,    "created new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "second $b1 commit exists" );
-is( $commit->branch, $b1 );
-is( $commit->log,    "updated new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "first $b2 commit exists" );
-is( $commit->branch, $b2 );
-is( $commit->log,    "created new content" );
-
-$commit = $c->describe_commit;
-ok( defined($commit), "second $b2 commit exists" );
-is( $commit->branch, $b2 );
-is( $commit->log,    "updated new content" );
+ok( defined($commit), 'squashed new branch commit exists' ) or BAIL_OUT "premature end of commits";
+ok( !ref($commit), 'squashed commit is a plain string' )
+    or BAIL_OUT "will fail with $commit anyway";
+like( strip_irc_colors($commit), qr/\($ENV{USER}\) feature [0-9a-f]{7} test\/there New branch with 2 commits pushed,  1 file changed, 2\(\+\) since master\/[0-9a-f]{7}/ );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
