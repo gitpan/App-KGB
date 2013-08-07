@@ -72,7 +72,7 @@ argument, which is a map with the following possible keys:
 
 =item rev_prefix I<revision-prefix>
 
-Usualy C<r> for Subversion commits
+Usually C<r> for Subversion commits
 
 =item commit_id I<commit id>
 

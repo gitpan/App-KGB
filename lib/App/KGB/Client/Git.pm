@@ -29,10 +29,13 @@ __PACKAGE__->mk_accessors(
     qw( changesets old_rev new_rev refname git_dir _git _commits reflog
         squash_threshold squash_msg_template
         branch_ff_msg_template
+        enable_branch_ff_notification
+        tag_squash_threshold tag_squash_msg_template
     ));
 
 use App::KGB::Change;
 use App::KGB::Commit;
+use App::KGB::Commit::Tag;
 use IPC::Run;
 
 =head1 NAME
@@ -117,6 +120,12 @@ file and these given on the command line.
 
 =over
 
+=item project-id
+
+The project ID.
+
+See L<App::KGB::Client/project-id> for details.
+
 =item web-link
 
 See L<App::KGB::Client/web-link> for details.
@@ -136,6 +145,30 @@ A template for construction of squashed messages. See
 L<App::KGB::Client/message-template> for details.
 
 The default is C<${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}>.
+
+=item tag-squash-threshold I<number>
+
+Unique to Git KGB client. Sets a threshold of the notifications produced
+for tag creations. If there are more tags created in the push, instead
+of producing huge amounts of notifications, the tags are "squashed" into
+one notification summarizing the information.
+
+The default value is C<5>.
+
+=item tag-squash-message-template I<string>
+
+A template for construction of squashed tags messages. See
+L<App::KGB::Client/message-template> for details.
+
+The default is C<${{author-name}}${ ({author-login})}${ {project}/}${{module}}${ {log}}>.
+
+=item enable-branch-ff-notification I<bool>
+
+Enables notifications about branch updates whose commits have already been
+reported. Normally this causes a notification like C<fast forward> to appear.
+If you don't like this, set it to false.
+
+The default is C<true>.
 
 =back
 
@@ -164,6 +197,9 @@ sub new {
         $self->module($module);
     }
 
+    if ( my $pid = $self->_git->config('kgb.project-id') ) {
+        $self->repo_id($pid);
+    }
     if ( my $wl = $self->_git->config('kgb.web-link') ) {
         $self->web_link($wl);
     }
@@ -171,14 +207,33 @@ sub new {
         $self->squash_threshold($st);
     }
     $self->squash_threshold(20) unless defined $self->squash_threshold;
+    if ( my $tst = $self->_git->config('kgb.tag-squash-threshold') ) {
+        $self->tag_squash_threshold($tst);
+    }
+    $self->tag_squash_threshold(5)
+        unless defined $self->tag_squash_threshold;
 
     if ( my $smt = $self->_git->config('kgb.squash-message-template') ) {
         $self->squash_msg_template($smt);
     }
     $self->squash_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}')
         unless $self->squash_msg_template;
+    if ( my $tsmt = $self->_git->config('kgb.tag-squash-message-template') ) {
+        $self->tag_squash_msg_template($tsmt);
+    }
+    $self->tag_squash_msg_template(
+        '${{author-name}}${ ({author-login})}${ {project}/}${{module}}${ {log}}'
+    ) unless $self->tag_squash_msg_template;
     $self->branch_ff_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}} fast-forward')
         unless $self->branch_ff_msg_template;
+
+    my $ebfn = $self->_git->config('kgb.enable-branch-ff-notification');
+    if ( defined($ebfn) and $ebfn ne '' ) {
+        $ebfn = ( $ebfn eq 'false' ) ? 0 : 1;
+        $self->enable_branch_ff_notification($ebfn);
+    }
+    $self->enable_branch_ff_notification(1)
+        unless defined $self->enable_branch_ff_notification;
 
     if ( defined( $self->old_rev // $self->new_rev // $self->refname ) ) {
 
@@ -280,6 +335,34 @@ sub _detect_commits {
 
         $self->_process_changeset_simple( $old_rev, $new_rev, $refname );
     }
+
+    my @tags;
+    for ( @{ $self->_commits } ) {
+        push @tags, $_ if eval { $_->isa('App::KGB::Commit::Tag') };
+    }
+
+    if ( scalar(@tags) > $self->tag_squash_threshold ) {
+        # remove tags from the commit stream
+        @{ $self->_commits } = grep {
+            not eval { $_->isa('App::KGB::Commit::Tag') }
+        } @{ $self->_commits };
+
+        $self->init_painter;
+        # add a synthetic tag summary
+        push @{ $self->_commits },
+            $self->format_message(
+            $self->tag_squash_msg_template,
+            log => sprintf(
+                'Pushed %s, %s, %d other tags and %s',
+                $self->colorize( branch => $tags[0]->tag_name ),
+                $self->colorize( branch => $tags[1]->tag_name ),
+                scalar(@tags) - 3,
+                $self->colorize( branch => $tags[-1]->tag_name ),
+            ),
+            author_login => $ENV{USER},
+            author_name  => $self->_get_full_user_name,
+            );
+    }
 }
 
 sub _exists {
@@ -338,8 +421,8 @@ sub _describe_ref {
     my $author_name;
     while (<$fh>) {
         if ( /^author (.+) <([^>]+)@[^>]+>/ ) {
-            $author_name = $1;
-            $author_login = $2;
+            utf8::decode( $author_name  = $1 );
+            utf8::decode( $author_login = $2 );
             next;
         }
         push( @parents, substr( $1, 0, 7 ) ), next if /^parent\s+(\S+)/;
@@ -377,7 +460,6 @@ sub _describe_ref {
                 push @changes, App::KGB::Change->new("(M$mode_change)$file");
             }
         }
-
     }
 
     $self->_git->command_close_pipe( $fh, $ctx );
@@ -431,8 +513,8 @@ sub _describe_annotated_tag {
             $tag = $1, next if /^tag (.+)/;
 
             if ( /^Tagger: (.+) <([^>@]+)@[^>]+>/ ) {
-                $author_name = $1;
-                $author_login = $2;
+                utf8::decode( $author_name  = $1 );
+                utf8::decode( $author_login = $2 );
                 next;
             }
 
@@ -455,13 +537,14 @@ sub _describe_annotated_tag {
         }
     }
 
-    return App::KGB::Commit->new(
+    return App::KGB::Commit::Tag->new(
         {   id     => substr( $ref, 0, 7 ),
             author => $author_login,
             author_name => $author_name,
             log    => join( "\n", @log ),
             branch  => $signed ? 'signed tags' : 'tags',
             changes => [ App::KGB::Change->new("(A)$tag") ],
+            tag_name => $tag,
         }
     );
 }
@@ -637,18 +720,20 @@ sub _describe_branch_updates {
 
         # see if some updated branch was without any reported commits
         # if this case put a fast-forward notification
-        for ( @updated_branches ) {
-            next if $branch_has_commits{$_};
+        if ( $self->enable_branch_ff_notification ) {
+            for ( @updated_branches ) {
+                next if $branch_has_commits{$_};
 
-            push @commits,
-                App::KGB::Commit->new(
-                {   branch      => $_,
-                    id          => substr( $branch_updates{$_}[1], 0, 7 ),
-                    author      => $ENV{USER},
-                    author_name => $self->_get_full_user_name,
-                    log         => 'fast forward',
-                }
-                );
+                push @commits,
+                    App::KGB::Commit->new(
+                    {   branch      => $_,
+                        id          => substr( $branch_updates{$_}[1], 0, 7 ),
+                        author      => $ENV{USER},
+                        author_name => $self->_get_full_user_name,
+                        log         => 'fast forward',
+                    }
+                    );
+            }
         }
     }
 
@@ -854,18 +939,20 @@ EOF
     else {
 
         # Anything else (is there anything else?)
-        die "*** Unknown type of update to $refname ($rev_type)";
+        warn "*** Unknown type of update to $refname ($rev_type) ignored";
+        return;
     }
 
     if ( $ref_update_type eq 'create' ) {
         if ( $refname_type eq 'tag' ) {
             push @{ $self->_commits },
-                App::KGB::Commit->new(
+                App::KGB::Commit::Tag->new(
                 {   id     => substr( $new_rev, 0, 7 ),
                     #author => $cmt->author,
                     log => "tag '$tag' created",
                     branch => 'tags',
                     changes => [ App::KGB::Change->new("(A)$tag") ],
+                    tag_name => $tag,
                 }
                 );
         }
@@ -875,32 +962,6 @@ EOF
         else {
             # branch creations would be picked by _describe_branch_updates
             return;
-
-            my @commits = $self->_describe_branch_changes( $branch, $old_rev,
-                $new_rev );
-
-            if (@commits) {
-                push @{ $self->_commits }, @commits;
-            }
-            else {
-
-                # If there were no genuine branch commits, this means the new
-                # branch is just a copy of an old one and there is nothing
-                # changed.
-                # Still, we want to notify about the fact that the branch was
-                # created
-                my $c = $self->_describe_ref($new_rev);
-                push @{ $self->_commits },
-                    App::KGB::Commit->new(
-                    {   id      => $c->{id},
-                        branch  => $branch,
-                        changes => [],
-                        log     => 'branch created',
-                        author  => $c->{author},
-                        author_name => $c->{author_name},
-                    }
-                    );
-            }
         }
     }
     elsif ( $ref_update_type eq 'delete' ) {
@@ -920,9 +981,6 @@ EOF
     else {    # update
         # should be processed by _describe_branch_updates
         return;
-
-        push @{ $self->_commits },
-            $self->_describe_branch_changes( $branch, $old_rev, $new_rev );
     }
 }
 

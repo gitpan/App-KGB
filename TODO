@@ -6,5 +6,6 @@
 * write tests for CVS client
 * Move URL shortening to bot (configurable)
 * admin/sync -- needs a plan
-* client: verify config file structure strictly and die (warn?) if something is
-  wrong. for example, servers should be a list of maps, and not a map
+
+* watch file broken; depending on the UA, alioth replies with
+  "406 Not Acceptable"

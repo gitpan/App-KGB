@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use utf8;
 require v5.10.0;
+use feature 'switch';
 # vim: ts=4:sw=4:et:ai:sts=4
 #
 # KGB - an IRC bot helping collaboration
@@ -185,6 +186,7 @@ For example:
 =cut
 
 use App::KGB::Client::ServerRef;
+use Carp;
 use Getopt::Long;
 use Pod::Usage;
 use YAML ();
@@ -194,6 +196,8 @@ use YAML ();
 # 2. configuration file
 # 3. command line
 # Sources are evaluated in this order. Every source overrides previous ones
+
+my $debug;
 
 my ($conf_file,      $uri,        $proxy,
     $repo_id,        $password,   $timeout,
@@ -217,6 +221,7 @@ GetOptions(
     'conf=s'  => \$conf_file,
     'help|?'  => \$help,
     'man'     => \$man,
+    'debug!'  => \$debug,
 ) or pod2usage(2);
 pod2usage(0) if $help;
 pod2usage(-exitval => 0, -verbose => 2) if $man;
@@ -225,9 +230,18 @@ pod2usage(-exitval => 0, -verbose => 2) if $man;
 my $conf;
 
 sub from_conf {
-    my ( $setting, $ref ) = @_;
+    my ( $setting, $ref, $descr ) = @_;
     return unless exists $conf->{$setting};
     ref($ref) or die "Internal error -- expecting reference ($setting)";
+
+    my $descr_name;
+    if( $descr ) {
+        given ( ref($descr) ) {
+            when ('ARRAY') { $descr_name = 'lists'; }
+            when ('HASH')  { $descr_name = 'maps'; }
+            default        { confess "Should not happen ($_)"; }
+        }
+    }
 
     my $value = $conf->{$setting};
     if ( ref($ref) eq 'SCALAR' ) {
@@ -239,13 +253,57 @@ sub from_conf {
         die "'$setting' configuration option must be array"
             unless ref($value)
             and ref($value) eq 'ARRAY';
-        @$ref = @$value;
+
+        for (@$value) {
+            my $ref_name;
+            given ( ref($_) ) {
+                $ref_name = 'list' when 'ARRAY';
+                $ref_name = 'map' when 'HASH';
+                $ref_name = 'plain value';
+            }
+
+            if ( $descr and ( not ref($_) or ref($_) ne ref($descr) ) ) {
+                warn "'$setting' must be a list of $descr_name. "
+                    . "Found a $ref_name. Entry ignored.\n";
+                next;
+            }
+
+            if ( not $descr and ref($_) ) {
+                warn "'$setting' must be a list of plain values. "
+                    . "Found a $ref_name. Entry ignored.\n";
+                next;
+            }
+
+            push @$ref, $_;
+        }
     }
     elsif ( ref($ref) eq 'HASH' ) {
         die "'$setting' configuration option must be map"
             unless ref($value)
             and ref($value) eq 'HASH';
-        %$ref = %$value;
+
+        while ( my ( $k, $v ) = each %$value ) {
+            my $ref_name;
+            given ( ref($v) ) {
+                $ref_name = 'list' when 'ARRAY';
+                $ref_name = 'map' when 'HASH';
+                $ref_name = 'plain value';
+            }
+
+            if ( $descr and ( not ref($v) or ref($v) ne ref($descr) ) ) {
+                warn "'$setting' must be a map having $descr_name as values. "
+                    . "Found a $ref_name in the '$k' element. Entry ignored.\n";
+                next;
+            }
+
+            if ( not $descr and ref($v) ) {
+                warn "'$setting' must be a map having plain values. "
+                    . "Found a $ref_name in the '$k' element. Entry Ignored.\n";
+                next;
+            }
+
+            $ref->{$k} = $v;
+        }
     }
     else {
         die "Internal error -- unknown reference ($setting)";
@@ -261,8 +319,16 @@ if ( exists $ENV{GIT_DIR} ) {
 
     $repo_type = 'git';
 
+    warn "Repository type detected to be 'Git' from the environment\n"
+        if $debug;
+
     # default configuration file
-    $conf_file //= `git config kgb.conf`;
+    unless ($conf_file) {
+        $conf_file = `git config kgb.conf`;
+        chomp($conf_file);
+        warn "Config file from git-config: $conf_file\n"
+            if $debug;
+    }
 }
 elsif ( exists $ENV{CVSROOT} ) {
     $repo_type = 'cvs';
@@ -298,7 +364,7 @@ if( $conf_file ) {
     from_conf( protocol                    => \$protocol );
     from_conf( 'relay_msg'                 => \$relay_msg );
     from_conf( 'use-color'                 => \$use_color );
-    from_conf( 'servers'                   => \@servers );
+    from_conf( 'servers'                   => \@servers, {} );
     from_conf( 'color-scheme'              => \%colors );
     from_conf( 'message-template'          => \$msg_template );
     from_conf( 'batch-messages'            => \$batch_messages );

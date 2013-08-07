@@ -6,7 +6,7 @@
       "gregor herrmann"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4005, CPAN::Meta::Converter version 2.120921",
+   "generated_by" : "Module::Build version 0.4005, CPAN::Meta::Converter version 2.131560",
    "license" : [
       "open_source"
    ],
@@ -21,17 +21,6 @@
       ]
    },
    "prereqs" : {
-      "build" : {
-         "requires" : {
-            "Test::Compile" : "0",
-            "Test::Perl::Critic" : "0",
-            "Test::Pod" : "0",
-            "Test::Pod::Coverage" : "0",
-            "Test::Simple" : "0.92",
-            "autodie" : "0",
-            "perl" : "5.010"
-         }
-      },
       "configure" : {
          "requires" : {
             "Module::Build" : "0.40",
@@ -68,51 +57,46 @@
    "provides" : {
       "App::KGB" : {
          "file" : "lib/App/KGB.pm",
-         "version" : "1.27"
+         "version" : "1.28"
       },
       "App::KGB::API" : {
-         "file" : "lib/App/KGB/API.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/API.pm"
       },
       "App::KGB::Change" : {
-         "file" : "lib/App/KGB/Change.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Change.pm"
       },
       "App::KGB::Client" : {
-         "file" : "lib/App/KGB/Client.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client.pm"
       },
       "App::KGB::Client::CVS" : {
-         "file" : "lib/App/KGB/Client/CVS.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/CVS.pm"
       },
       "App::KGB::Client::Fake" : {
-         "file" : "lib/App/KGB/Client/Fake.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/Fake.pm"
       },
       "App::KGB::Client::Git" : {
-         "file" : "lib/App/KGB/Client/Git.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/Git.pm"
       },
       "App::KGB::Client::RelayMsg" : {
-         "file" : "lib/App/KGB/Client/RelayMsg.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/RelayMsg.pm"
       },
       "App::KGB::Client::ServerRef" : {
-         "file" : "lib/App/KGB/Client/ServerRef.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/ServerRef.pm"
       },
       "App::KGB::Client::Subversion" : {
-         "file" : "lib/App/KGB/Client/Subversion.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Client/Subversion.pm"
       },
       "App::KGB::Commit" : {
-         "file" : "lib/App/KGB/Commit.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Commit.pm"
+      },
+      "App::KGB::Commit::Tag" : {
+         "file" : "lib/App/KGB/Commit/Tag.pm"
       },
       "App::KGB::Painter" : {
-         "file" : "lib/App/KGB/Painter.pm",
-         "version" : 0
+         "file" : "lib/App/KGB/Painter.pm"
+      },
+      "JSON::RPC::Client::Any" : {
+         "file" : "lib/JSON/RPC/Client/Any.pm"
       },
       "WWW::Shorten::Debli" : {
          "file" : "lib/WWW/Shorten/Debli.pm",
@@ -125,5 +109,19 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt"
       ]
    },
-   "version" : "1.27"
+   "version" : "1.28",
+   "x_test_requires" : {
+      "Git" : "0",
+      "SVN::Core" : "0",
+      "SVN::Fs" : "0",
+      "SVN::Repos" : "0",
+      "Test::Compile" : "0",
+      "Test::Perl::Critic" : "0",
+      "Test::Pod" : "0",
+      "Test::Pod::Coverage" : "0",
+      "Test::Simple" : "0.92",
+      "YAML" : "0",
+      "autodie" : "0",
+      "perl" : "5.010"
+   }
 }

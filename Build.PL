@@ -5,6 +5,11 @@ use lib qw(privinc);
 use My::Builder;
 use utf8;
 
+my $json_rpc_client_module
+    = eval { require JSON::RPC::Client }
+    ? 'JSON::RPC::Client'
+    : 'JSON::RPC::Legacy::Client';
+
 my $builder = My::Builder->new(
     dist_name   => 'App-KGB',
     dist_version_from => 'lib/App/KGB.pm',
@@ -15,14 +20,19 @@ my $builder = My::Builder->new(
         'Module::Build'       => '0.40',
         perl                  => '5.010',
     },
-    build_requires => {
+    test_requires => {
         autodie               => 0,
+        'Git'                          => 0,
         perl                  => '5.010',
+        'SVN::Core'                    => 0,
+        'SVN::Fs'                      => 0,
+        'SVN::Repos'                   => 0,
         'Test::Compile'       => 0,
         'Test::Perl::Critic'  => 0,
         'Test::Pod::Coverage' => 0,
         'Test::Pod'           => 0,
         'Test::Simple'        => '0.92',
+        'YAML'                         => 0,
     },
     requires => {
         perl                           => '5.010',
@@ -34,7 +44,7 @@ my $builder = My::Builder->new(
         'IPC::Run'                     => 0,
         'IPC::System::Simple'          => 0,
         'JSON'                         => 0,
-        'JSON::RPC::Client'            => 0,
+        $json_rpc_client_module        => 0,
         'POE'                          => 0,
         'POE::Component::IRC'          => '5.56',
         'POE::Component::Server::SOAP' => 0,

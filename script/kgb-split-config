@@ -41,7 +41,7 @@ foreach my $repo ( keys %{ $yaml->{repositories} } ) {
     $splitconfig->{repositories}->{$repo} = $yaml->{repositories}->{$repo};
     foreach my $channel ( @{ $yaml->{channels} } ) {
         push @{ $splitconfig->{channels} }, $channel
-            if $repo ~~ @{ $channel->{repos} };
+            if grep { $_ eq $repo } @{ $channel->{repos} };
     }
     my $outfile = File::Spec->catdir( $dir, "$repo.conf" );
     DumpFile( $outfile, $splitconfig );

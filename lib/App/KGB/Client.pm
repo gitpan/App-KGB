@@ -207,7 +207,7 @@ A web link template to be sent to the server. The following items are expanded:
 A L<WWW::Shorten> service to use for shortening the B<web_link>. See
 L<WWW::Shorten> for the list of supported services.
 
-=item msg_template I<string>
+=item B<msg_template> I<string>
 
 Provides a way to customize the notifications' appearance on IRC. When present,
 all message construction is done on the client and the prepared messages
@@ -258,7 +258,7 @@ the B<web_link> option is also given.
 
 =back
 
-=item style I<hash reference>
+=item B<style> I<hash reference>
 
 Provides a color map for different parts of the message. The following keys are
 supported. Defaults are used when keys are missing in the hash. B<use_color>
@@ -450,7 +450,7 @@ sub detect_branch_and_module {
     my $safe = Safe->new;
     $safe->permit_only(
         qw(padany lineseq match const leaveeval
-            rv2sv pushmark list warn)
+            rv2gv rv2sv pushmark list warn)
     );
 
     my ( $branch, $module, $matched_re );
@@ -519,7 +519,7 @@ sub detect_branch_and_module {
 
 =item shuffle_servers
 
-Returns a shuffled variant of C<< $self->servers >>. It considers the last
+Returns a shuffled variant of C<< $self-E<gt>servers >>. It considers the last
 successfuly used server by this client instance and puts it first. If there is
 no such server, it considers the state in C<status_dir> and picks the last
 server noted there, if it was used in the last 5 minutes.
@@ -704,7 +704,7 @@ sub init_painter {
         App::KGB::Painter->new( { item_colors => $self->colors } ) );
 }
 
-=item colorize I<category> => I<text>
+=item colorize I<category> =E<gt> I<text>
 
 Returns a colored version of I<text>. If there is no painter, returns just
 I<text>.
@@ -781,7 +781,7 @@ sub colorize_changes {
     }
 }
 
-=item format_message %details
+=item format_message $template %details
 
 Returns a formatted message, ready to be sent to the servers. The message is
 formatted according to the B<message_format> configuration parameter, honouring
@@ -806,41 +806,47 @@ sub format_message {
         $msg = ${^POSTMATCH};
         warn "# msg is now '$msg'" if 0;
         my @r;
-        given ($token) {
-            when ('project') { push @r, project => $self->repo_id }
-            when ('author-login') {
-                push @r, author => $commit
-                    ? $commit->author
-                    : $p{author_login}
-            }
-            when ('author-name') {
-                push @r, author => $commit
-                    ? $commit->author_name
-                    : $p{author_name}
-            }
-            when ('branch') {
-                push @r, branch => $commit ? $commit->branch : $p{branch}
-            }
-            when ('module') {
-                push @r, module => $self->module
-                    // ( $commit ? $commit->module : $p{module} )
-            }
-            when ('web-link') { push @r, web => $p{web_link} }
-            when ('commit') {
-                push @r, commit_id => $commit ? $commit->id : $p{commit_id}
-            }
-            when ('log') { push @r, log => $commit ? $commit->log : $p{log} }
-            when ('log-first-line') {
-                push @r, log => ( split( /\n/, $commit->log ) )[0]
-            }
-            when ('changes') {
-                push @r, '' => $self->colorize_changes( $commit->changes )
-                    if $commit and $commit->changes;
-            }
-            default {
-                push @r, '' => "Unknown item '$_'"
-            }
+
+        if ( $token eq 'project' ) {
+            push @r, project => $self->repo_id;
         }
+        elsif ( $token eq 'author-login' ) {
+            push @r, author => $commit
+                ? $commit->author
+                : $p{author_login};
+        }
+        elsif ( $token eq 'author-name' ) {
+            push @r, author => $commit
+                ? $commit->author_name
+                : $p{author_name};
+        }
+        elsif ( $token eq 'branch' ) {
+            push @r, branch => $commit ? $commit->branch : $p{branch};
+        }
+        elsif ( $token eq 'module' ) {
+            push @r, module => $self->module
+                // ( $commit ? $commit->module : $p{module} );
+        }
+        elsif ( $token eq 'web-link' ) {
+            push @r, web => $p{web_link};
+        }
+        elsif ( $token eq 'commit' ) {
+            push @r, commit_id => $commit ? $commit->id : $p{commit_id};
+        }
+        elsif ( $token eq 'log' ) {
+            push @r, log => $commit ? $commit->log : $p{log};
+        }
+        elsif ( $token eq 'log-first-line' ) {
+            push @r, log => ( split( /\n/, $commit->log ) )[0];
+        }
+        elsif ( $token eq 'changes' ) {
+            push @r, '' => $self->colorize_changes( $commit->changes )
+                if $commit and $commit->changes;
+        }
+        else {
+            push @r, '' => "Unknown item '$_'";
+        }
+
         my ( $category, $item ) = @r;
 
         warn "# item = '$item'" if 0;
@@ -1038,6 +1044,8 @@ sub _get_full_user_name {
 
     my $user = getpwnam($login);
     ( my $full_name = $user->gecos ) =~ s/,.*//;
+
+    utf8::decode($full_name);
 
     $self->_full_user_name($full_name);
 

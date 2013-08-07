@@ -74,9 +74,6 @@ poke('three');
 in_wd "svn add file";
 in_wd "svn ci -m 'replace file'";
 
-in_wd "svn rm file";
-in_wd "svn ci -m 'remove file. Über cool with cyrillics: здрасти'";
-
 ok( 1, "Test repository prepared" );
 
 use App::KGB::Client::Subversion;
@@ -148,19 +145,26 @@ is( $change->path, '/file' );
 ok( not $change->prop_change );
 is( $change->action, 'R' );
 
-$c->revision(4);
-$c->_called(0);
-$commit = $c->describe_commit;
+SKIP: {
+    skip "UTF-8 locale needed for the test with UTF-8 commit message", 7,
+        unless ( ( $ENV{LC_CTYPE} // '' ) =~ /utf-8$/i );
 
-is( $commit->id, 4 );
-is( $commit->log, 'remove file. Über cool with cyrillics: здрасти' );
-is( $commit->author, $me );
-is( scalar @{ $commit->changes }, 1 );
+    in_wd "svn rm file";
+    in_wd "svn ci -m 'remove file. Über cool with cyrillics: здрасти'";
 
-$change = $commit->changes->[0];
-is( $change->path, '/file' );
-ok( not $change->prop_change );
-is( $change->action, 'D' );
+    $c->revision(4);
+    $c->_called(0);
+    $commit = $c->describe_commit;
 
+    is( $commit->id, 4 );
+    is( $commit->log, 'remove file. Über cool with cyrillics: здрасти' );
+    is( $commit->author, $me );
+    is( scalar @{ $commit->changes }, 1 );
+
+    $change = $commit->changes->[0];
+    is( $change->path, '/file' );
+    ok( not $change->prop_change );
+    is( $change->action, 'D' );
+}
 
 diag `cat $hook_log` if $hook_log and -s $hook_log;

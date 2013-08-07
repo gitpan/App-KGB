@@ -27,7 +27,7 @@ our @EXPORT = qw(makeashorterlink makealongerlink);
 our $VERSION = '0.1';
 
 use Carp;
-use JSON::RPC::Client;
+use JSON::RPC::Client::Any;
 
 our $RPC_URL = 'http://deb.li/rpc/json';
 
@@ -44,7 +44,7 @@ the URL and will return the shortened variant.
 
 sub makeashorterlink {
     my $url = shift or croak 'No URL passed to makeashorterlink';
-    my $rpc = JSON::RPC::Client->new();
+    my $rpc = JSON::RPC::Client::Any->new();
     my $res
         = $rpc->call( $RPC_URL => { method => 'add_url', params => [$url] } );
     return undef unless $res;
@@ -66,7 +66,7 @@ If anything goes wrong, then either function will return C<undef>.
 sub makealongerlink {
     my $key = shift or croak 'No key / URL passed to makealongerlink';
     $key =~ s,^http://deb.li/,,;
-    my $rpc = JSON::RPC::Client->new();
+    my $rpc = JSON::RPC::Client::Any->new();
     my $res
         = $rpc->call( $RPC_URL => { method => 'get_url', params => [$key] } );
     return undef unless $res;

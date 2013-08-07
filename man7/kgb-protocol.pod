@@ -19,11 +19,11 @@
 #
 =head1 NAME
 
-KGB protocol
+KGB_protocol - specification of the client-server communication protocol
 
 =head1 DESCRIPTION
 
-The protocol used by the KGB colaboration service is based on JSON-RPC
+The protocol used by the KGB collaboration service is based on JSON-RPC
 (L<http://json-rpc.org/>).
 
 KGB service helps collaboration by relaying notifications about commits in a

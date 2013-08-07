@@ -25,7 +25,9 @@ lib/App/KGB/Client/RelayMsg.pm
 lib/App/KGB/Client/ServerRef.pm
 lib/App/KGB/Client/Subversion.pm
 lib/App/KGB/Commit.pm
+lib/App/KGB/Commit/Tag.pm
 lib/App/KGB/Painter.pm
+lib/JSON/RPC/Client/Any.pm
 lib/WWW/Shorten/Debli.pm
 LICENSE
 Makefile
@@ -52,6 +54,7 @@ t/53-client-git-merges.t
 t/54-client-git-squash.t
 t/55-client-git-merges-ff.t
 t/56-client-git-ff-merge-2.t
+t/57-client-git-squash-tags.t
 t/critic.t
 t/perlcriticrc
 t/pod-coverage.t

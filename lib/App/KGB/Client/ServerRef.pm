@@ -174,10 +174,12 @@ sub send_changes {
     my @commit_changes = $commit->changes ? @{ $commit->changes } : ();
     my $password = $self->password;
 
-    given ( $client->single_line_commits ) {
-        when ('off')    { }     # keep it as it is
-        when ('forced') { $commit_log =~ s/\n.*//s; }
-        when ('auto')   { $commit_log =~ s/^[^\n]+\K\n\n.*//s; }
+    my $slc = $client->single_line_commits;
+    if ( $slc eq 'forced' ) {
+        $commit_log =~ s/\n.*//s;
+    }
+    elsif ( $slc eq 'auto' ) {
+        $commit_log =~ s/^[^\n]+\K\n\n.*//s;
     }
 
     foreach ( $repo_id, $commit_id, @commit_changes, $commit_log,
@@ -207,19 +209,18 @@ sub send_changes {
     };
 
     my $meth;
-    given ($protocol_ver) {
-        when ('auto') {
-            if ( defined($extra) ) {
-                $meth = 'send_changes_v3';
-            }
-            else {
-                $meth = 'send_changes_v2';
-            }
+    if ( $protocol_ver eq 'auto' ) {
+        if ( defined($extra) ) {
+            $meth = 'send_changes_v3';
         }
-        default { $meth = "send_changes_v$protocol_ver";
-            die "Unsupported protocol version requested ($protocol_ver)\n"
-                unless $self->can($meth);
+        else {
+            $meth = 'send_changes_v2';
         }
+    }
+    else {
+        $meth = "send_changes_v$protocol_ver";
+        die "Unsupported protocol version requested ($protocol_ver)\n"
+            unless $self->can($meth);
     }
 
     if ( $self->verbose ) {
@@ -264,8 +265,9 @@ sub send_changes_json {
     my ( $self, $repo_id, $message ) = @_;
 
     require JSON;
-    require JSON::RPC::Client;
-    my $rpc = JSON::RPC::Client->new();
+    require JSON::RPC::Client::Any;
+    my $rpc = JSON::RPC::Client::Any->new();
+
     $rpc->ua->timeout($self->timeout // 15);
     $message->{id} = 1;
     $message->{version} = '1.1';

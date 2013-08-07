@@ -1,3 +1,31 @@
+1.28 (2013-08-08)
+  [ gregor herrmann ]
+  * client: Fix failure with Safe-2.35.
+    Thanks to Petr Písař <ppisar@redhat.com> for the patch.
+
+  [ Damyan Ivanov ]
+  * client: detect UTF8 in full author name
+  * git client: add kgb.enable-branch-ff-notification Git option (true by
+    default) for managing fast forward notifications
+  * declare test dependencies in test_requires
+  * client: add --debug option
+  * git client: chomp git-config-determined config file path before usage
+  * replace ~~ (smartmatch) usage. ~~ is deprecated in perl 5.18
+  * replace given/when usage, declared experimental in perl 5.18
+  * client: verify config file structures
+  * git client: do not die on unknown ref updates (see #706375)
+  * git client: squash creation if numerous tags (>5 currently)
+  * git client: configurable tag squash threshold/message
+  * client: correct POD about Client->format_message arguments
+  * bot: allow setting of "" color to disable colouring of a given item
+  * bot: use App::KGB::Painter for coloring
+  * bot: add --simulate-color option enabling color codes in the dump file
+  * git client: include tag name in the Tag object created from annotated tags
+  * git client: allow specifying project-id via git-config
+  * t/50-client.t: skip tests with UTF-8 commit messages (subversion) unless
+    C_TYPE is known to use UTF-8. RT#80664
+  * adapt to newer JSON-RPC which renamed the client module (RT#80666)
+
 1.27 (2013-05-29)
  * client:
    + --repository option is no longer required
