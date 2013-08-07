@@ -1,3 +1,7 @@
+1.29 (2013-08-08)
+  * add versions to all modules
+  * ensure strict and warnings are used everywhere
+
 1.28 (2013-08-08)
   [ gregor herrmann ]
   * client: Fix failure with Safe-2.35.

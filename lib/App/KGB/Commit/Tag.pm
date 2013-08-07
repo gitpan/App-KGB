@@ -21,6 +21,8 @@ package App::KGB::Commit::Tag;
 use strict;
 use warnings;
 
+our $VERSION = 1.28;
+
 use base 'App::KGB::Commit';
 
 =head1 NAME

@@ -19,6 +19,11 @@
 
 package App::KGB::API;
 
+use strict;
+use warnings;
+
+our $VERSION = 4;
+
 1;
 
 __END__

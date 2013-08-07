@@ -81,7 +81,7 @@ use open ':encoding(utf8)';
 use App::KGB::Painter;
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.28';
+our $VERSION = '1.29';
 
 use Cwd;
 

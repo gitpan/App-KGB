@@ -1,6 +1,11 @@
 package App::KGB::Client::RelayMsg;
 use utf8;
 
+use strict;
+use warnings;
+
+our $VERSION = 1.27;
+
 # vim: ts=4:sw=4:et:ai:sts=4
 #
 # KGB - an IRC bot helping collaboration -- Simple message relay
@@ -19,9 +24,6 @@ use utf8;
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
-use strict;
-use warnings;
 
 =head1 NAME
 

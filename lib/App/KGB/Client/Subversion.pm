@@ -24,6 +24,8 @@ use utf8;
 use strict;
 use warnings;
 
+our $VERSION = 1.27;
+
 =head1 NAME
 
 App::KGB::Client::Subversion - KGB interface to Subversion

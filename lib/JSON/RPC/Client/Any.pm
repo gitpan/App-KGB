@@ -1,5 +1,10 @@
 package JSON::RPC::Client::Any;
 
+use strict;
+use warnings;
+
+our $VERSION = 1.28;
+
 our @ISA;
 
 BEGIN {

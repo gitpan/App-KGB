@@ -21,6 +21,7 @@ package App::KGB::Client::ServerRef;
 
 use strict;
 use warnings;
+our $VERSION = 1.28;
 use feature 'switch';
 use Encode;
 use Storable ();

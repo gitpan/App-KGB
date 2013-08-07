@@ -10,6 +10,11 @@ B<App::KGB::Painter> is a simple class encapsulating coloring of KGB messages.
 
 =cut
 
+use strict;
+use warnings;
+
+our $VERSION = 1.27;
+
 use base 'Class::Accessor::Fast';
 
 __PACKAGE__->mk_accessors( qw(item_colors color_codes simulate) );
@@ -73,7 +78,7 @@ sub new {
     my $self = shift->SUPER::new(@_);
 
     # default colors
-    $self->color_codes( \%color_codess ) unless $self->color_codes;
+    $self->color_codes( \%color_codes ) unless $self->color_codes;
     my $c = $self->color_codes;
     while ( my ($k,$v) = each %color_codes ) {
         $c->{$k} = $v unless exists $c->{$k};

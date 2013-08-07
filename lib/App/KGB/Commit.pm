@@ -22,6 +22,8 @@ package App::KGB::Commit;
 use strict;
 use warnings;
 
+our $VERSION = 1.27;
+
 =head1 NAME
 
 App::KGB::Commit - a single commit

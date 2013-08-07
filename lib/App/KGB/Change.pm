@@ -22,6 +22,8 @@ package App::KGB::Change;
 use strict;
 use warnings;
 
+our $VERSION = 1.22;
+
 use File::Basename qw(dirname);
 
 =head1 NAME

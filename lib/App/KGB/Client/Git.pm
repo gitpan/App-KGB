@@ -22,6 +22,8 @@ package App::KGB::Client::Git;
 use strict;
 use warnings;
 
+our $VERSION = 1.28;
+
 use base 'App::KGB::Client';
 use Git;
 use Carp qw(confess);
