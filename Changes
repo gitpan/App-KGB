@@ -1,3 +1,6 @@
+1.30 (2013-08-09)
+  * bot: fix colorize_change_wrapper
+
 1.29 (2013-08-08)
   * add versions to all modules
   * ensure strict and warnings are used everywhere

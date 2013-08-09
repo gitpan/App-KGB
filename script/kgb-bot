@@ -81,7 +81,7 @@ use open ':encoding(utf8)';
 use App::KGB::Painter;
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.29';
+our $VERSION = '1.30';
 
 use Cwd;
 
@@ -519,7 +519,7 @@ sub colorize {
 sub colorize_change {
     my $c = shift;
 
-    return $KGB::painter->colorize_change(@_);
+    return $KGB::painter->colorize_change($c);
 }
 
 sub do_commit_msg {

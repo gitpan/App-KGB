@@ -21,7 +21,7 @@ no_index:
 provides:
   App::KGB:
     file: lib/App/KGB.pm
-    version: 1.29
+    version: 1.30
   App::KGB::API:
     file: lib/App/KGB/API.pm
     version: 4
@@ -89,7 +89,7 @@ requires:
   perl: 5.010
 resources:
   license: http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
-version: 1.29
+version: 1.30
 x_test_requires:
   Git: 0
   SVN::Core: 0
