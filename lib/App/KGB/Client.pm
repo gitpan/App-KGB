@@ -335,6 +335,7 @@ use Carp qw(confess);
 use Digest::MD5 qw(md5_hex);
 use Digest::SHA qw(sha1_hex);
 use DirHandle ();
+use File::Basename qw(dirname);
 use SOAP::Lite;
 use Getopt::Long;
 use List::Util ();

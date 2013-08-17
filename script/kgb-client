@@ -214,6 +214,9 @@ my ($conf_file,      $uri,        $proxy,
 # defaults
 $single_line_commits = 'auto';
 $use_color           = 1;
+$msg_template = '${{author-name} }${{branch} }${{commit} }${{module}}${ {changes}}${ {log-first-line}}${ * {web-link}}';
+# multi-line notifications
+# $msg_template = '${{author-name} }${{branch} }${{commit} }${{project}/}${{module}}${ {changes}}${ * {web-link}}${\n{log}}';
 
 Getopt::Long::Configure('pass_through');
 
@@ -436,6 +439,13 @@ if ( $relay_msg ) {
 
     $repo_type = 'IGNORED';
     $relay_msg = join( ' ', @ARGV );
+
+    my $ok = eval {
+        $relay_msg = Encode::decode_utf8( $relay_msg, $Encode::FB_CROAK );
+        1;
+    };
+
+    die "--relay-msg supports only UTF-8 arguments\n" unless $ok;
 }
 
 use Cwd();

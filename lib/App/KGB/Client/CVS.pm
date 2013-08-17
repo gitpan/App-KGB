@@ -209,10 +209,11 @@ sub describe_commit {
     $self->_called(1);
 
     return App::KGB::Commit->new(
-        {   changes => \@changes,
-            author  => $self->author,
-            log     => $log,
-            module  => $module,
+        {   changes     => \@changes,
+            author      => $self->author,
+            author_name => $self->_get_full_user_name( $self->author ),
+            log         => $log,
+            module      => $module,
         }
     );
 }

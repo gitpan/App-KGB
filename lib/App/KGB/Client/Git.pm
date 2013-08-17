@@ -146,7 +146,7 @@ The default value is C<20>.
 A template for construction of squashed messages. See
 L<App::KGB::Client/message-template> for details.
 
-The default is C<${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}>.
+The default is C<${{author-name}}${ {branch}}${ {commit}}${ {module}}${ {log}}>.
 
 =item tag-squash-threshold I<number>
 
@@ -162,7 +162,7 @@ The default value is C<5>.
 A template for construction of squashed tags messages. See
 L<App::KGB::Client/message-template> for details.
 
-The default is C<${{author-name}}${ ({author-login})}${ {project}/}${{module}}${ {log}}>.
+The default is C<${{author-name}}${ {module}}${ {log}}>.
 
 =item enable-branch-ff-notification I<bool>
 
@@ -218,15 +218,15 @@ sub new {
     if ( my $smt = $self->_git->config('kgb.squash-message-template') ) {
         $self->squash_msg_template($smt);
     }
-    $self->squash_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}')
+    $self->squash_msg_template('${{author-name}}${ {branch}}${ {commit}}${ {module}}${ {log}}')
         unless $self->squash_msg_template;
     if ( my $tsmt = $self->_git->config('kgb.tag-squash-message-template') ) {
         $self->tag_squash_msg_template($tsmt);
     }
     $self->tag_squash_msg_template(
-        '${{author-name}}${ ({author-login})}${ {project}/}${{module}}${ {log}}'
+        '${{author-name} }${{module}}${ {log}}'
     ) unless $self->tag_squash_msg_template;
-    $self->branch_ff_msg_template('${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}} fast-forward')
+    $self->branch_ff_msg_template('${{author-name}}${ {branch}}${ {commit}}${ {module}} fast-forward')
         unless $self->branch_ff_msg_template;
 
     my $ebfn = $self->_git->config('kgb.enable-branch-ff-notification');

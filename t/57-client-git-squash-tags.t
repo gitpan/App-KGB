@@ -88,6 +88,10 @@ mkdir $remote;
 $ENV{GIT_DIR} = $remote;
 system 'git', 'init', '--bare';
 
+system( 'git', 'config', 'kgb.tag-squash-message-template',
+    '${{author-name}}${ ({author-login})}${ {project}/}${{module}}${ {log}}'
+);
+
 use Cwd;
 my $R = getcwd;
 

@@ -211,12 +211,7 @@ sub send_changes {
 
     my $meth;
     if ( $protocol_ver eq 'auto' ) {
-        if ( defined($extra) ) {
-            $meth = 'send_changes_v3';
-        }
-        else {
-            $meth = 'send_changes_v2';
-        }
+        $meth = 'send_changes_json';
     }
     else {
         $meth = "send_changes_v$protocol_ver";
@@ -265,14 +260,14 @@ sub send_changes_soap {
 sub send_changes_json {
     my ( $self, $repo_id, $message ) = @_;
 
-    require JSON;
+    require JSON::XS;
     require JSON::RPC::Client::Any;
     my $rpc = JSON::RPC::Client::Any->new();
 
     $rpc->ua->timeout($self->timeout // 15);
     $message->{id} = 1;
     $message->{version} = '1.1';
-    my $json = eval { JSON::encode_json($message); };
+    my $json = eval { JSON::XS::encode_json($message); };
     unless ($json) {
         my $dump;
         if ( require Devel::PartialDump ) {

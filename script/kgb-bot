@@ -81,7 +81,7 @@ use open ':encoding(utf8)';
 use App::KGB::Painter;
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.30';
+our $VERSION = '1.31';
 
 use Cwd;
 
@@ -328,7 +328,7 @@ sub read_conf ($) {
     $KGB::debug = $conf->{debug} if exists $conf->{debug};
     $conf->{pid_dir} //= '/var/run/kgb-bot';
 
-    KGB->debug( JSON::encode_json($conf) );
+    KGB->debug( JSON::XS::encode_json($conf) );
     return $conf;
 }
 
@@ -1193,7 +1193,7 @@ sub irc_command {
 
 package KGB::JSON;
 
-use JSON;
+use JSON::XS;
 use POE;
 use Digest::SHA qw(sha1_hex);
 

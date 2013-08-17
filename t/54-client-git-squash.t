@@ -93,6 +93,10 @@ my $R = getcwd;
 
 my $hook_log;
 
+system( 'git', 'config', 'kgb.squash-message-template',
+    '${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}'
+);
+
 if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
     diag "will try to send notifications to locally running bot";
     $hook_log = "$dir/hook.log";
