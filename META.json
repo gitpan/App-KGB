@@ -6,9 +6,9 @@
       "gregor herrmann"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4007, CPAN::Meta::Converter version 2.132140",
+   "generated_by" : "Module::Build version 0.4206",
    "license" : [
-      "open_source"
+      "gpl_2"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
@@ -52,68 +52,25 @@
             "YAML" : "0",
             "perl" : "5.010"
          }
-      }
-   },
-   "provides" : {
-      "App::KGB" : {
-         "file" : "lib/App/KGB.pm",
-         "version" : "1.31"
       },
-      "App::KGB::API" : {
-         "file" : "lib/App/KGB/API.pm",
-         "version" : "4"
-      },
-      "App::KGB::Change" : {
-         "file" : "lib/App/KGB/Change.pm",
-         "version" : "1.22"
-      },
-      "App::KGB::Client" : {
-         "file" : "lib/App/KGB/Client.pm",
-         "version" : "1.28"
-      },
-      "App::KGB::Client::CVS" : {
-         "file" : "lib/App/KGB/Client/CVS.pm",
-         "version" : "1.23"
-      },
-      "App::KGB::Client::Fake" : {
-         "file" : "lib/App/KGB/Client/Fake.pm",
-         "version" : "1.17"
-      },
-      "App::KGB::Client::Git" : {
-         "file" : "lib/App/KGB/Client/Git.pm",
-         "version" : "1.28"
-      },
-      "App::KGB::Client::RelayMsg" : {
-         "file" : "lib/App/KGB/Client/RelayMsg.pm",
-         "version" : "1.27"
-      },
-      "App::KGB::Client::ServerRef" : {
-         "file" : "lib/App/KGB/Client/ServerRef.pm",
-         "version" : "1.28"
-      },
-      "App::KGB::Client::Subversion" : {
-         "file" : "lib/App/KGB/Client/Subversion.pm",
-         "version" : "1.27"
-      },
-      "App::KGB::Commit" : {
-         "file" : "lib/App/KGB/Commit.pm",
-         "version" : "1.27"
-      },
-      "App::KGB::Commit::Tag" : {
-         "file" : "lib/App/KGB/Commit/Tag.pm",
-         "version" : "1.28"
-      },
-      "App::KGB::Painter" : {
-         "file" : "lib/App/KGB/Painter.pm",
-         "version" : "1.27"
-      },
-      "JSON::RPC::Client::Any" : {
-         "file" : "lib/JSON/RPC/Client/Any.pm",
-         "version" : "1.28"
-      },
-      "WWW::Shorten::Debli" : {
-         "file" : "lib/WWW/Shorten/Debli.pm",
-         "version" : "0.1"
+      "test" : {
+         "requires" : {
+            "File::Remove" : "0",
+            "Git" : "0",
+            "SVN::Core" : "0",
+            "SVN::Fs" : "0",
+            "SVN::Repos" : "0",
+            "Test::Compile" : "0",
+            "Test::Differences" : "0",
+            "Test::Exception" : "0",
+            "Test::Perl::Critic" : "0",
+            "Test::Pod" : "0",
+            "Test::Pod::Coverage" : "0",
+            "Test::Simple" : "0.92",
+            "YAML" : "0",
+            "autodie" : "0",
+            "perl" : "5.010"
+         }
       }
    },
    "release_status" : "stable",
@@ -122,19 +79,5 @@
          "http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt"
       ]
    },
-   "version" : "1.31",
-   "x_test_requires" : {
-      "Git" : "0",
-      "SVN::Core" : "0",
-      "SVN::Fs" : "0",
-      "SVN::Repos" : "0",
-      "Test::Compile" : "0",
-      "Test::Perl::Critic" : "0",
-      "Test::Pod" : "0",
-      "Test::Pod::Coverage" : "0",
-      "Test::Simple" : "0.92",
-      "YAML" : "0",
-      "autodie" : "0",
-      "perl" : "5.010"
-   }
+   "version" : "1.32"
 }

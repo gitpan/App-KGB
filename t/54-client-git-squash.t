@@ -3,13 +3,16 @@ use warnings;
 
 use autodie qw(:all);
 use Test::More;
+use Test::Differences;
+unified_diff();
 
 BEGIN {
     eval { require Git; 1 }
         or plan skip_all => "Git.pm required for testing Git client";
 }
 
-plan 'no_plan';
+use lib 't';
+use TestBot;
 
 use App::KGB::Change;
 use App::KGB::Client::Git;
@@ -28,43 +31,14 @@ my $tmp_cleanup = not $ENV{TEST_KEEP_TMP};
 my $dir = tempdir( 'kgb-XXXXXXX', CLEANUP => $tmp_cleanup, DIR => File::Spec->tmpdir );
 diag "Temp directory $dir will pe kept" unless $tmp_cleanup;
 
+my $test_bot = TestBot->start;
+
 sub write_tmp {
     my( $fn, $content ) = @_;
 
     open my $fh, '>', "$dir/$fn";
     print $fh $content;
     close $fh;
-}
-
-if ( $ENV{TEST_KGB_BOT_DUMP} ) {
-    diag "$ENV{TEST_KGB_BOT_DUMP} will be checked for IRC dump";
-    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 ) if -e $ENV{TEST_KGB_BOT_DUMP};
-    require Test::Differences;
-    Test::Differences->import;
-}
-
-my $dump_fh;
-
-sub is_irc_output {
-    return unless my $dump = $ENV{TEST_KGB_BOT_DUMP};
-    my $wanted = shift;
-
-    use IO::File;
-    $dump_fh ||= IO::File->new("< $dump")
-        or die "Unable to open $dump: $!";
-    $dump_fh->binmode(':utf8');
-    local $/ = undef;
-    $dump_fh->seek( $dump_fh->tell, 0 );
-    eq_or_diff( "" . <$dump_fh>, $wanted );
-}
-
-sub strip_irc_colors {
-    my $in = shift;
-
-    $in =~ s/\x03\d\d//g;
-    $in =~ s/[\x00-\x1f]+//g;
-
-    return $in;
 }
 
 my $remote = "$dir/there.git";
@@ -91,28 +65,35 @@ system 'git', 'init', '--bare';
 use Cwd;
 my $R = getcwd;
 
-my $hook_log;
+my $hook_log = "$dir/hook.log";
+my $hook = "$dir/there.git/hooks/post-receive";
 
 system( 'git', 'config', 'kgb.squash-message-template',
     '${{author-name}}${ ({author-login})}${ {branch}}${ {commit}}${ {project}/}${{module}}${ {log}}'
 );
 
-if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
-    diag "will try to send notifications to locally running bot";
-    $hook_log = "$dir/hook.log";
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
+# the real test client
+{
+    my $ccf = $test_bot->client_config_file;
+    open my $fh, '>', $hook;
+    print $fh <<EOF;
 #!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --repository git --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $hook_log 2>&1
+
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $ccf >> $hook_log 2>&1
 EOF
-}
-else {
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
-#!/bin/sh
-cat >> "$dir/reflog"
-EOF
+    close $fh;
+    chmod 0755, $hook;
 }
 
-chmod 0755, "$dir/there.git/hooks/post-receive";
+if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
+    diag "will try to send notifications to locally running bot";
+    open( my $fh, '>>', $hook );
+    print $fh <<"EOF";
+
+cat "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $dir
+EOF
+    close $fh;
+}
 
 system("GIT_DIR=$dir/there.git git config --add kgb.squash-threshold 1");
 
@@ -157,7 +138,7 @@ sub push_ok {
     my $ignore = $git->command( [qw( push origin --all )], { STDERR => 0 } );
     $ignore = $git->command( [qw( push origin --tags )], { STDERR => 0 } );
 
-    $c->_parse_reflog;
+    $c->_reset;
     $c->_detect_commits;
 
     diag `cat $hook_log` if $hook_log and -s $hook_log;
@@ -184,6 +165,13 @@ $commit = $c->describe_commit;
 ok( defined($commit), 'first commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log,    "import old content" );
+is( $commit->id,     shift @{ $commits{master} } );
+
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $commit->id
+        . ' 12test/06there 03old import old content * 14http://scm.host.org/there/master/?commit='
+        . $commit->id
+        . '' );
 
 w( 'new', 'content' );
 $git->command( 'add', 'new' );
@@ -191,14 +179,20 @@ $git->command( 'commit', '-m', 'created new content' );
 w( 'new', 'more content' );
 $git->command( 'commit', '-a', '-m', 'updated new content' );
 a( 'new', 'even more content' );
-$git->command( 'commit', '-a', '-m', 'another update' );
+do_commit('another update' );
 
 push_ok;
 
 $commit = $c->describe_commit;
 ok( defined($commit), 'squashed commit exists' ) or BAIL_OUT 'will fail anyway';
 ok( !ref($commit), 'squashed commit is a plain string' ) or BAIL_OUT 'will fail anyway';
-like( strip_irc_colors($commit), qr/\($ENV{USER}\) master [0-9a-f]{7} test\/there 3 commits pushed,  1 file changed, 2\(\+\)$/ );
+
+my $commit_id = shift @{ $commits{master} };
+
+TestBot->expect( "#test 03${TestBot::USER_NAME} "
+        . "(03${TestBot::USER}) 05master $commit_id "
+        . "12test/06there 3 commits pushed, "
+        . " 101 file changed, 032(+)" );
 
 ### multiple commits in a new branch
 $git->command( 'checkout', '-q', '-b', 'feature', 'master' );
@@ -208,13 +202,28 @@ a( 'new', 'even more additional content' );
 do_commit( 'second commit in the new branch' );
 push_ok;
 
+my $last_commit_id = $commit_id;
+$commit_id = pop @{ $commits{feature} };
 $commit = $c->describe_commit;
 ok( defined($commit), 'squashed new branch commit exists' ) or BAIL_OUT "premature end of commits";
 ok( !ref($commit), 'squashed commit is a plain string' )
     or BAIL_OUT "will fail with $commit anyway";
-like( strip_irc_colors($commit), qr/\($ENV{USER}\) feature [0-9a-f]{7} test\/there New branch with 2 commits pushed,  1 file changed, 2\(\+\) since master\/[0-9a-f]{7}/ );
+
+TestBot->expect( "#test 03${TestBot::USER_NAME} (03${TestBot::USER}) "
+        . "05feature "
+        . $commit_id
+        . " 12test/06there New branch with 2 commits pushed, "
+        . " 101 file changed, 032(+) since master/"
+        . $last_commit_id );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
 is( $commit, undef );
 
+my $output = $test_bot->get_output;
+
+undef($test_bot);   # make sure all output us there
+
+eq_or_diff( $output, TestBot->expected_output );
+
+done_testing();

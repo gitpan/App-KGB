@@ -153,6 +153,7 @@ The following settings can be configured via L<git-config(1)>:
 =over
 
 =item conf
+
 =item web-link
 
 =back
@@ -209,6 +210,12 @@ my ($conf_file,      $uri,        $proxy,
     $help,           $man,        $use_irc_notices,
     $use_color,      %colors,     $msg_template,
     $batch_messages,
+
+    # Git
+    $squash_threshold, $squash_msg_template,
+    $branch_ff_msg_template,
+    $enable_branch_ff_notification,
+    $tag_squash_threshold, $tag_squash_msg_template,
 );
 
 # defaults
@@ -238,12 +245,14 @@ sub from_conf {
     ref($ref) or die "Internal error -- expecting reference ($setting)";
 
     my $descr_name;
-    if( $descr ) {
-        given ( ref($descr) ) {
-            when ('ARRAY') { $descr_name = 'lists'; }
-            when ('HASH')  { $descr_name = 'maps'; }
-            default        { confess "Should not happen ($_)"; }
+    if ($descr) {
+        if ( ref($descr) eq 'ARRAY' ) {
+            $descr_name = 'lists';
         }
+        elsif ( ref($descr) eq 'HASH' ) {
+            $descr_name = 'maps';
+        }
+        else { confess "Should not happen ($_)"; }
     }
 
     my $value = $conf->{$setting};
@@ -259,9 +268,13 @@ sub from_conf {
 
         for (@$value) {
             my $ref_name;
-            given ( ref($_) ) {
-                $ref_name = 'list' when 'ARRAY';
-                $ref_name = 'map' when 'HASH';
+            if ( ref($_) eq 'ARRAY' ) {
+                $ref_name = 'list';
+            }
+            elsif ( ref($_) eq 'HASH' ) {
+                $ref_name = 'map';
+            }
+            else {
                 $ref_name = 'plain value';
             }
 
@@ -287,9 +300,13 @@ sub from_conf {
 
         while ( my ( $k, $v ) = each %$value ) {
             my $ref_name;
-            given ( ref($v) ) {
-                $ref_name = 'list' when 'ARRAY';
-                $ref_name = 'map' when 'HASH';
+            if ( ref($v) eq 'ARRAY' ) {
+                $ref_name = 'list';
+            }
+            elsif ( ref($v) eq 'HASH' ) {
+                $ref_name = 'map';
+            }
+            else {
                 $ref_name = 'plain value';
             }
 
@@ -371,6 +388,15 @@ if( $conf_file ) {
     from_conf( 'color-scheme'              => \%colors );
     from_conf( 'message-template'          => \$msg_template );
     from_conf( 'batch-messages'            => \$batch_messages );
+
+    # Git-specific stuff
+    from_conf( 'squash-threshold'       => \$squash_threshold );
+    from_conf( 'squash-msg-template'    => \$squash_msg_template );
+    from_conf( 'branch-ff-msg-template' => \$branch_ff_msg_template );
+    from_conf(
+        'enable-branch-ff-notification' => \$enable_branch_ff_notification );
+    from_conf( 'tag-squash-threshold'    => \$tag_squash_threshold );
+    from_conf( 'tag-squash-msg-template' => \$tag_squash_msg_template );
 }
 
 
@@ -403,6 +429,12 @@ GetOptions(
     'use-color!'                 => \$use_color,
     'message-template=s'         => \$msg_template,
     'batch-messages!'            => \$batch_messages,
+    'squash-threshold=s'         => \$squash_threshold,
+    'squash-msg-template=s'      => \$squash_msg_template,
+    'branch-ff-msg-template=s'   => \$branch_ff_msg_template,
+    'enable-branch-ff-notification!' => \$enable_branch_ff_notification,
+    'tag-squash-threshold=s'     => \$tag_squash_threshold,
+    'tag-squash-msg-template'    => \$tag_squash_msg_template,
 ) or pod2usage(2);
 
 if ( $br_mod_re_swap ) {
@@ -525,7 +557,16 @@ elsif ( $repo_type eq 'git' ) {
         . $@;
 
     my $client = App::KGB::Client::Git->new(
-        { @client_args, reflog => $git_reflog } );
+        {   @client_args,
+            reflog                        => $git_reflog,
+            squash_threshold              => $squash_threshold,
+            squash_msg_template           => $squash_msg_template,
+            branch_ff_msg_template        => $branch_ff_msg_template,
+            enable_branch_ff_notification => $enable_branch_ff_notification,
+            tag_squash_threshold          => $tag_squash_threshold,
+            tag_squash_msg_template       => $tag_squash_msg_template,
+        }
+    );
 
     $client->process();
 

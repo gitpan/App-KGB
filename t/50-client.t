@@ -4,6 +4,10 @@ use warnings;
 use autodie qw(:all);
 use File::Spec::Functions qw( catdir catfile );
 use Test::More;
+use Test::Differences;
+use lib 't';
+use TestBot;
+use POSIX qw(setlocale LC_CTYPE);
 
 BEGIN {
     eval { require SVN::Core; 1 }
@@ -14,13 +18,15 @@ BEGIN {
         or plan skip_all => "SVN::Repos required for testing the Subversion client";
 };
 
-plan tests => 30;
-
 use utf8;
 my $builder = Test::More->builder;
 binmode $builder->output,         ":utf8";
 binmode $builder->failure_output, ":utf8";
 binmode $builder->todo_output,    ":utf8";
+
+my $test_bot = TestBot->start;
+
+diag sprintf( "Test bot started on %s:%d", $test_bot->addr, $test_bot->port );
 
 use File::Temp qw(tempdir);
 my $r = tempdir( CLEANUP => not $ENV{TEST_KEEP_TEMP} );
@@ -43,22 +49,34 @@ sub in_wd {
 
 system 'svnadmin', 'create', $repo;
 
-my $hook_log;
+use Cwd;
+my $hook_log = catdir( $r, 'hook.log' );
 
-if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
-    diag "will try to send notifications to locally running bot";
-    use Cwd;
-    $hook_log = catdir( $r, 'hook.log' );
+# the real test client
+{
     my $R = getcwd;
-    my $h;
-    open $h, '>', "$repo/hooks/post-commit";
-    print $h <<"EOF";
+    my $ccf = $test_bot->client_config_file;
+    open my $fh, '>', "$repo/hooks/post-commit";
+    print $fh <<EOF;
 #!/bin/sh
 
-PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $r \$1 \$2 >> $hook_log 2>&1
+PERL5LIB=$R/lib $R/script/kgb-client --conf $ccf \$1 \$2 >> $hook_log 2>&1
+EOF
+    close $fh;
+    chmod 0755, "$repo/hooks/post-commit";
+}
+
+# duplicate, talking to a different bot, connected to IRC
+if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
+    diag "will try to send notifications to locally running bot";
+    my $R = getcwd;
+    my $h;
+    open $h, '>>', "$repo/hooks/post-commit";
+    print $h <<"EOF";
+
+PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $r \$1 \$2 >> /dev/null
 EOF
     close $h;
-    chmod 0755, "$repo/hooks/post-commit";
 }
 system 'svn', 'checkout', "file://$repo", $wd;
 
@@ -66,13 +84,25 @@ poke('one');
 in_wd "svn add $tf";
 in_wd "svn ci -m 'add file'";
 
+TestBot->expect(
+    "#test ${TestBot::COMMIT_USER} 1 12test/ 03/file add file * 14http://scm.host.org///?commit=1"
+);
+
 poke('two');
 in_wd "svn ci -m 'modify file'";
+
+TestBot->expect(
+    "#test ${TestBot::COMMIT_USER} 2 12test/ 10/file modify file * 14http://scm.host.org///?commit=2"
+);
 
 in_wd "svn rm file";
 poke('three');
 in_wd "svn add file";
 in_wd "svn ci -m 'replace file'";
+
+TestBot->expect(
+    "#test ${TestBot::COMMIT_USER} 3 12test/ 05/file replace file * 14http://scm.host.org///?commit=3"
+);
 
 ok( 1, "Test repository prepared" );
 
@@ -147,10 +177,12 @@ is( $change->action, 'R' );
 
 SKIP: {
     skip "UTF-8 locale needed for the test with UTF-8 commit message", 7,
-        unless ( ( $ENV{LC_CTYPE} // '' ) =~ /utf-8$/i );
+        unless ( ( setlocale(LC_CTYPE) // '' ) =~ /utf-8$/i );
 
     in_wd "svn rm file";
     in_wd "svn ci -m 'remove file. Über cool with cyrillics: здрасти'";
+
+    TestBot->expect("#test 03${TestBot::USER_NAME} (03${TestBot::USER}) 4 12test/ 04/file remove file. Über cool with cyrillics: здрасти * 14http://scm.host.org///?commit=4");
 
     $c->revision(4);
     $c->_called(0);
@@ -168,3 +200,12 @@ SKIP: {
 }
 
 diag `cat $hook_log` if $hook_log and -s $hook_log;
+
+my $output = $test_bot->get_output;
+
+undef($test_bot);   # make sure all output us there
+unified_diff;
+
+eq_or_diff( $output, TestBot->expected_output );
+
+done_testing();

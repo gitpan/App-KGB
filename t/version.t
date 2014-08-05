@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 1;
+use Test::More;
 
 use App::KGB;
 my $app_kgb_version = $App::KGB::VERSION;
@@ -22,3 +22,5 @@ while ( defined( $_ = <$f> ) ) {
 ok( $app_kgb_version eq $kgb_bot_version,
     "App::KGB version ($app_kgb_version) matches kgb-bot version ($kgb_bot_version)"
 );
+
+done_testing();

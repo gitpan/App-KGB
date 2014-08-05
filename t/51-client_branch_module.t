@@ -13,8 +13,6 @@ BEGIN {
         or plan skip_all => "SVN::Repos required for testing the Subversion client";
 };
 
-plan tests => 1+8*3;
-
 use App::KGB::Change;
 use App::KGB::Client::Subversion;
 use App::KGB::Client::ServerRef;
@@ -139,3 +137,5 @@ test_matching(
     ], 1,
     undef, undef, 'foo/trunk/debian/moo bar/trunk/debian/goo',
 );
+
+done_testing();

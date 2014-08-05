@@ -1,3 +1,54 @@
+1.31 (2014-08-04)
+  [ Damyan Ivanov ]
+  * bot: store real path to the pid directory
+  * bot: remove PID file on exit
+  * fix utf-8 locale detection in 50-client.t
+  * TestBot: test helper module for running a real bot for tests
+  * 50-client.t: check real bot output
+  * TestBot: report bot PID when starting/stopping
+  * convert 52-client-git to TestBot
+  * fix detection of common changes path when using msg_template
+  * require File::Remove and Test::Differences for tests
+  * convert 53-client-git-merges.t to TestBot
+  * convert 54-client-git-squash.t to TestBot
+  * convert t/55-client-git-merges-ff.t to TestBot
+  * convert t/56-client-git-ff-merge-2.t to TestBot
+  * convert t/57-client-git-squash-tags.t to TestBot
+  * avoid double-spaces when formatting messages
+  * bot: honour broadcast channels setting when relaying messages too
+
+  [ gregor herrmann ]
+  * kgb.conf(5): improve documentation for server_addr variable.
+    (Closes: #744689)
+
+  [ Damyan Ivanov ]
+  * kgb-client: add support for setting Git-specific options via the
+    configuration file/command line
+  * point to client backends for backend-specific configuration options
+  * use encoding 'utf8' --> use utf8
+  * replace given/when with chained if/elsif/else
+  * missing newline between =items (POD)
+  * update FSF address
+  * bump years of copyrigght
+  * put GPL_2 as license in Build.PL (gpl2 is not recognised anymore)
+  * move gathering of data from new() to _detect_commits
+  * a new internal method, _reset, for resetting the parsed reflog data
+  * use strict and warnings in tests
+  * tests: replace explicit plans with done_testing()
+  * die when the reflog is empty
+  * fix typo in changelog (wheter -> whether), thanks lintian
+
+1.31 (2013-08-17)
+  * client: default to using json
+  * remove author-login from default message templates
+  * import dirname in Client.pm
+  * configure test git repositories whether test bot is running or not
+  * remove project from default configuration
+  * update documentation about default message templates
+  * add author_name field for CVS commits
+  * client: decode arguments given to --relay-msg
+  * require JSON::XS instead of plain JSON
+
 1.30 (2013-08-09)
   * bot: fix colorize_change_wrapper
 

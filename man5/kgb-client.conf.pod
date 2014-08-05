@@ -150,6 +150,12 @@ of the ordinary C<privmsg> messages.
 If set to a false value will make the IRC bot use no color in the
 notifications.
 
+=head2 Repository-specific configuration options
+
+Some of the backends may support additional configuration options. See
+L<App::KGB::Client::Git>, L<App::KGB::Client::Subversion> and
+L<App::KGB::Client::CVS>.
+
 =head1 EXAMPLE CONFGURATION
 
  # vim: filetype=yaml

@@ -3,13 +3,15 @@ use warnings;
 
 use autodie qw(:all);
 use Test::More;
+use Test::Exception;
 
 BEGIN {
     eval { require Git; 1 }
         or plan skip_all => "Git.pm required for testing Git client";
 }
 
-plan 'no_plan';
+use lib 't';
+use TestBot;
 
 use App::KGB::Change;
 use App::KGB::Client::Git;
@@ -17,6 +19,9 @@ use App::KGB::Client::ServerRef;
 use Git;
 use File::Temp qw(tempdir);
 use File::Spec;
+use Test::Differences;
+
+unified_diff();
 
 use utf8;
 my $builder = Test::More->builder;
@@ -28,34 +33,14 @@ my $tmp_cleanup = not $ENV{TEST_KEEP_TMP};
 my $dir = tempdir( 'kgb-XXXXXXX', CLEANUP => $tmp_cleanup, DIR => File::Spec->tmpdir );
 diag "Temp directory $dir will pe kept" unless $tmp_cleanup;
 
+my $test_bot = TestBot->start;
+
 sub write_tmp {
     my( $fn, $content ) = @_;
 
     open my $fh, '>', "$dir/$fn";
     print $fh $content;
     close $fh;
-}
-
-if ( $ENV{TEST_KGB_BOT_DUMP} ) {
-    diag "$ENV{TEST_KGB_BOT_DUMP} will be checked for IRC dump";
-    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 ) if -e $ENV{TEST_KGB_BOT_DUMP};
-    require Test::Differences;
-    Test::Differences->import;
-}
-
-my $dump_fh;
-
-sub is_irc_output {
-    return unless my $dump = $ENV{TEST_KGB_BOT_DUMP};
-    my $wanted = shift;
-
-    use IO::File;
-    $dump_fh ||= IO::File->new("< $dump")
-        or die "Unable to open $dump: $!";
-    $dump_fh->binmode(':utf8');
-    local $/ = undef;
-    $dump_fh->seek( $dump_fh->tell, 0 );
-    eq_or_diff( "" . <$dump_fh>, $wanted );
 }
 
 my $remote = "$dir/there.git";
@@ -82,24 +67,31 @@ system 'git', 'init', '--bare';
 use Cwd;
 my $R = getcwd;
 
-my $hook_log;
+my $hook_log = "$dir/hook.log";
+my $hook = "$dir/there.git/hooks/post-receive";
 
-if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
+# the real test client
+{
+    my $ccf = $test_bot->client_config_file;
+    open my $fh, '>', $hook;
+    print $fh <<EOF;
+#!/bin/sh
+
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $ccf >> $hook_log 2>&1
+EOF
+    close $fh;
+    chmod 0755, $hook;
+}
+
+if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
     diag "will try to send notifications to locally running bot";
-    $hook_log = "$dir/hook.log";
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
-#!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --git-reflog - --conf $R/eg/test-client.conf --status-dir $dir >> $hook_log 2>&1
-EOF
-}
-else {
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
-#!/bin/sh
-cat >> "$dir/reflog"
-EOF
-}
+    open( my $fh, '>>', $hook);
+    print $fh <<"EOF";
 
-chmod 0755, "$dir/there.git/hooks/post-receive";
+cat "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf
+EOF
+    close $fh;
+}
 
 mkdir $local;
 $ENV{GIT_DIR} = "$local/.git";
@@ -142,7 +134,7 @@ sub push_ok {
     my $ignore = $git->command( [qw( push origin --all )], { STDERR => 0 } );
     $ignore = $git->command( [qw( push origin --tags )], { STDERR => 0 } );
 
-    $c->_parse_reflog;
+    $c->_reset;
     $c->_detect_commits;
 
     diag `cat $hook_log` if $hook_log and -s $hook_log;
@@ -152,7 +144,7 @@ my %commits;
 sub do_commit {
     $git->command_oneline( 'commit', '-m', shift ) =~ /\[(\w+).*\s+(\w+)\]/;
     push @{ $commits{$1} }, $2;
-    diag "commit $2 in branch $1" unless $tmp_cleanup;
+    #diag "commit $2 in branch $1" unless $tmp_cleanup;
 }
 
 
@@ -163,7 +155,6 @@ $git->command( 'add', '.' );
 do_commit('initial import');
 $git->command( 'remote', 'add', 'origin', "file://$remote" );
 push_ok;
-
 
 # now "$dir/reflog" shall have some refs
 #diag "Looking for the reflog in '$dir/reflog'";
@@ -180,7 +171,12 @@ is( $commit->author, 'ser' );
 is( scalar @{ $commit->changes }, 1 );
 is( $commit->changes->[0]->as_string, '(A)a' );
 
-is_irc_output( "#test ser master ".$commit->id." a * initial import\n" );
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $commit->id
+        . ' 12test/06there 03a initial import * 14http://scm.host.org/there/master/?commit='
+        . $commit->id
+        . '' );
+
 
 
 ##### modify and add
@@ -202,7 +198,11 @@ is( scalar @{ $commit->changes }, 2 );
 is( $commit->changes->[0]->as_string, 'a' );
 is( $commit->changes->[1]->as_string, '(A)b' );
 
-is_irc_output("#test ser master ".$commit->id." a b * some changes\n");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $commit->id
+        . ' 12test/06there 10a 03b some changes * 14http://scm.host.org/there/master/?commit='
+        . $commit->id
+        . '' );
 
 ##### remove, banch, modyfy, add, tag; batch send
 $git->command( 'rm', 'a' );
@@ -247,9 +247,21 @@ is( $commit->log, "tag '1.0-beta' created", "commit 5 log" );
 is( $commit->author, undef, "commit 5 author" );
 is( $commit->changes->[0]->as_string, '(A)1.0-beta', "commit 5 changes" );
 
-is_irc_output("#test ser master ".$c1->id." a * a removed
-#test ser other ".$c2->id." b c * a change in the other branch
-#test tags ".$c2->id." 1.0-beta * tag '1.0-beta' created\n");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $c1->id
+        . ' 12test/06there 04a a removed * 14http://scm.host.org/there/master/?commit='
+        . $c1->id
+        . '' );
+TestBot->expect( '#test 03Test U. Ser (03ser) 05other '
+        . $c2->id
+        . ' 12test/06there 10b 03c a change in the other branch * 14http://scm.host.org/there/other/?commit='
+        . $c2->id
+        . '' );
+TestBot->expect( '#test 05tags '
+        . $c2->id
+        . ' 12test/06there 031.0-beta tag \'1.0-beta\' created * 14http://scm.host.org/there/tags/?commit='
+        . $c2->id
+        . '' );
 
 ##### annotated tag
 mkdir( File::Spec->catdir($local, 'debian') );
@@ -283,9 +295,18 @@ is( $commit->log,
     'annotated tag log'
 );
 
-is_irc_output("#test ser other ".$c1->id." debian/README * add README for release
-#test ser tags ".$c2->id." 1.0-release * Release 1.0 (tagged commit: ".$c1->id.")
-");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05other '
+        . $c1->id
+        . ' 12test/06there 03debian/README add README for release * 14http://scm.host.org/there/other/?commit='
+        . $c1->id
+        . '' );
+TestBot->expect( '#test 03Test U. Ser (03ser) 05tags '
+        . $c2->id
+        . ' 12test/06there 031.0-release Release 1.0 (tagged commit: '
+        . $c1->id
+        . ') * 14http://scm.host.org/there/tags/?commit='
+        . $c2->id
+        . '' );
 
 # a hollow branch
 
@@ -301,10 +322,14 @@ is( $commit->branch, 'hollow', "hollow commit branch is 'hollow'" );
 is( scalar( @{ $commit->changes } ), 0, "no changes in hollow commit" );
 is( $commit->log, "branch created", "hollow commit log is 'branch created'" );
 
+TestBot->expect( '#test 05hollow '
+        . $commit->id
+        . ' 12test/06there branch created * 14http://scm.host.org/there/hollow/?commit='
+        . $commit->id
+        . '' );
+
 $commit = $c->describe_commit;
 ok( !defined($commit), 'hollow branch has no commits' );
-
-#is_irc_output("#test ser hollow ".$commit->id." * branch created\n");
 
 # some UTF-8
 w 'README', 'You dont read this!? Bad!';
@@ -319,7 +344,11 @@ is( $commit->author, 'ser' );
 is( scalar( @{ $commit->changes } ), 1 );
 is( $commit->log, "update readme with an über cléver cómmít with cyrillics: привет" );
 
-is_irc_output("#test ser other ".$commit->id." README * update readme with an über cléver cómmít with cyrillics: привет\n");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05other '
+        . $commit->id
+        . ' 12test/06there 03README update readme with an über cléver cómmít with cyrillics: привет * 14http://scm.host.org/there/other/?commit='
+        . $commit->id
+        . '' );
 
 # parent-less branch
     write_tmp 'reflog', '';
@@ -327,7 +356,7 @@ $git->command( [ 'checkout', '--orphan', 'allnew' ], { STDERR => 0 } );
 $git->command( 'rm', '-rf', '.' );
 $git->command( 'commit', '--allow-empty', '-m', 'created empty branch allnew' );
 $git->command( [ 'push', '-u', 'origin', 'allnew' ], { STDERR => 0 } );
-    $c->_parse_reflog;
+    $c->_reset;
     $c->_detect_commits;
 
 $commit = $c->describe_commit;
@@ -335,7 +364,11 @@ ok( defined($commit), 'empty branch creation commit exists' );
 is( $commit->branch, 'allnew', 'empty branch name' );
 is( $commit->log, "created empty branch allnew", 'empty branch log' );
 
-is_irc_output("#test ser allnew ".$commit->id." * created empty branch allnew\n");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05allnew '
+        . $commit->id
+        . ' 12test/06there created empty branch allnew * 14http://scm.host.org/there/allnew/?commit='
+        . $commit->id
+        . '' );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
@@ -350,7 +383,11 @@ ok( defined($commit), 'empty branch merge commit exists' );
 is( $commit->branch, 'master' );
 is( $commit->log, "Merge branch 'allnew'" );
 
-is_irc_output("#test ser master ".$c2->id." * Merge branch 'allnew'\n");
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $c2->id
+        . ' 12test/06there Merge branch \'allnew\' * 14http://scm.host.org/there/master/?commit='
+        . $c2->id
+        . '' );
 
 $git->command( checkout => '-q', 'other' );
 mkdir( File::Spec->catdir( $local, 'debian', 'patches' ) );
@@ -364,12 +401,28 @@ push_ok();
 
 $commit = $c->describe_commit;
 
-is_irc_output( "#test ser other "
+TestBot->expect( '#test 03Test U. Ser (03ser) 05other '
         . $commit->id
-        . " debian/patches/ series some.patch * A change in two files\n" );
+        . ' 12test/06there 10debian/patches/ 03series 03some.patch A change in two files * 14http://scm.host.org/there/other/?commit='
+        . $commit->id
+        . '' );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
 is( $commit, undef );
 $commit = $c->describe_commit;
 is( $commit, undef );
+
+diag `cat $hook_log` if $hook_log and -s $hook_log;
+
+my $output = $test_bot->get_output;
+
+undef($test_bot);   # make sure all output us there
+
+eq_or_diff( $output, TestBot->expected_output );
+
+$c->_reset;
+write_tmp("reflog", '');
+throws_ok { $c->describe_commit } qr/Reflog was empty/, 'should die without reflog data';
+
+done_testing();

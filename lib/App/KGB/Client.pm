@@ -757,7 +757,13 @@ returns a colorized string of all commit's changes
 sub colorize_changes {
     my ( $self, $changes ) = @_;
 
+    my @info;
+
     my $changed_files = scalar @$changes;
+
+    my $common_dir = App::KGB::Change->detect_common_dir($changes) // '';
+
+    push @info, $self->colorize( path => "$common_dir/" ) if $common_dir ne '';
 
     if ( $changed_files > $MAGIC_MAX_FILES ) {
         my %dirs;
@@ -773,14 +779,14 @@ sub colorize_changes {
             ? sprintf( "(%d files in %d dirs)", $changed_files, $dirs )
             : sprintf( "(%d files)",            $changed_files ) );
 
-        return $self->colorize( path => $path_string );
-    }
-    elsif ($changed_files) {
-        return join( ' ', map { $self->colorize_change($_) } @$changes );
+        push @info, $self->colorize( path => $path_string );
     }
     else {
-        return '';
+        push @info, join( ' ', map { $self->colorize_change($_) } @$changes )
+            if @$changes;
     }
+
+    return join( ' ', @info );
 }
 
 =item format_message $template %details
@@ -854,7 +860,11 @@ sub format_message {
         warn "# item = '$item'" if 0;
         next unless defined($item) and $item ne '';
 
-        $result .= $pre // '';
+        if ( defined($pre) ) {
+            # avoid adding multi-spaces or spaces at the beginning
+            $pre =~ s/^\s+// if $result =~ /\s$/ or $result eq '';
+            $result .= $pre;
+        }
         $result .=
             ( $category eq '' )
             ? $item

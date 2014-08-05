@@ -76,12 +76,12 @@ package KGB;
 
 use strict;
 use warnings;
-use encoding 'utf8';
+use utf8;
 use open ':encoding(utf8)';
 use App::KGB::Painter;
 use Time::Piece qw(localtime);
 
-our $VERSION = '1.31';
+our $VERSION = '1.32';
 
 use Cwd;
 
@@ -326,7 +326,8 @@ sub read_conf ($) {
     $conf->{colors}{prop_change} //= 'underline';
 
     $KGB::debug = $conf->{debug} if exists $conf->{debug};
-    $conf->{pid_dir} //= '/var/run/kgb-bot';
+    $conf->{pid_dir}
+        = Cwd::realpath( $conf->{pid_dir} // '/var/run/kgb-bot' );
 
     KGB->debug( JSON::XS::encode_json($conf) );
     return $conf;
@@ -387,6 +388,10 @@ sub open_log {
         open( STDERR, ">", "/dev/null" )
             or die "Error closing stderr: $!\n";
     }
+}
+
+sub remove_pid() {
+    unlink File::Spec->catfile( $KGB::config->{pid_dir}, 'kgb-bot.pid' );
 }
 
 package KGB::POE;
@@ -1332,6 +1337,9 @@ sub do_json_relay_message {
     exists $KGB::config->{repositories}{$repo_id} or die "Invalid repository '$repo_id'\n";
     my $repo = $KGB::config->{repositories}{$repo_id};
     my @channels = @{ $repo->{channels} };
+    push @channels, @{ $KGB::config->{broadcast_channels} }
+            unless $repo->{private};
+
     die("Repository $repo_id has no associated channels.\n") unless @channels;
 
     my @messages;
@@ -1483,6 +1491,9 @@ unless ($KGB::foreground) {
     }
 }
 
+# only after possible forking
+eval " END { KGB::remove_pid() }";
+
 POE::Component::Server::SOAP->new(
     ALIAS   => $KGB::const{SOAPsvc},
     ADDRESS => $KGB::config->{soap}{server_addr},
@@ -1529,4 +1540,5 @@ if ($KGB::restart) {
         $KGB::debug ? '--debug' : (),
     ) or die "couldn't re-exec: $!\ņ";
 }
+
 exit 0;

@@ -59,5 +59,6 @@ t/critic.t
 t/perlcriticrc
 t/pod-coverage.t
 t/pod.t
+t/TestBot.pm
 t/version.t
 TODO

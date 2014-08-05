@@ -237,6 +237,62 @@ sub new {
     $self->enable_branch_ff_notification(1)
         unless defined $self->enable_branch_ff_notification;
 
+    return $self;
+}
+
+sub _parse_reflog {
+    my $self = shift;
+
+    # read changeset data from a file
+    $self->changesets( [] );
+    my $fh;
+    open( $fh, $self->reflog // '-' )
+        or die "open(" . $self->reflog // '-' . "): $!";
+        # in order for '-' to open STDIN, we must use two-argument form of
+        # open(). see 'perldoc -f open'
+    while (<$fh>) {
+        chomp;
+        my @cs = split( /\s+/, $_ );
+        @cs == 3
+            or confess
+            "Invalid data on row $.. Must contain three space-separated words";
+        push @{ $self->changesets }, \@cs;
+    }
+    close $fh;
+
+    die "Reflog was empty. Broken git post-receive hook?\n"
+        unless @{ $self->{changesets} };
+}
+
+=head1 METHODS
+
+=over
+
+=item describe_commit
+
+Returns an instance of L<App::KGB::Change> class for each commit. Returns
+B<undef> when all commits were processed.
+
+=cut
+
+sub describe_commit {
+    my $self = shift;
+
+    $self->_detect_commits unless defined( $self->_commits );
+
+    return shift @{ $self->_commits };
+}
+
+sub _reset {
+    my $self = shift;
+
+    $self->_commits(undef);
+    $self->changesets(undef);
+}
+
+sub _detect_commits {
+    my $self = shift;
+
     if ( defined( $self->old_rev // $self->new_rev // $self->refname ) ) {
 
         # single commit
@@ -281,52 +337,6 @@ sub new {
     else {
         $self->_parse_reflog;
     }
-
-    return $self;
-}
-
-sub _parse_reflog {
-    my $self = shift;
-
-    # read changeset data from a file
-    $self->changesets( [] );
-    my $fh;
-    open( $fh, $self->reflog // '-' )
-        or die "open(" . $self->reflog // '-' . "): $!";
-        # in order for '-' to open STDIN, we must use two-argument form of
-        # open(). see 'perldoc -f open'
-    while (<$fh>) {
-        chomp;
-        my @cs = split( /\s+/, $_ );
-        @cs == 3
-            or confess
-            "Invalid data on row $.. Must contain three space-separated words";
-        push @{ $self->changesets }, \@cs;
-    }
-    close $fh;
-}
-
-=head1 METHODS
-
-=over
-
-=item describe_commit
-
-Returns an instance of L<App::KGB::Change> class for each commit. Returns
-B<undef> when all commits were processed.
-
-=cut
-
-sub describe_commit {
-    my $self = shift;
-
-    $self->_detect_commits unless defined( $self->_commits );
-
-    return shift @{ $self->_commits };
-}
-
-sub _detect_commits {
-    my $self = shift;
 
     $self->_commits([]);
 

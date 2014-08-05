@@ -1,3 +1,6 @@
+use strict;
+use warnings;
+
 use Test::More;
 use Test::Compile::Internal;
 
@@ -16,8 +19,6 @@ eval { require Git; 1 } or do {
     $t->diag("Git unavailable, skipping compilation test of App::KGB::Client::Git");
     @modules = grep { $_ !~ m,App/KGB/Client/Git.pm$, } @modules;
 };
-
-$t->plan( tests => scalar(@modules) );
 
 $t->ok( $t->pm_file_compiles($_), "$_ compiles" ) for @modules;
 

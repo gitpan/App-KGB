@@ -40,7 +40,10 @@ A map with the following possible keys:
 
 =item B<server_addr>
 
-IP address to listen to.
+IP address to listen to. Defaults to C<127.0.0.1>.
+
+For making KGB bot listen on all addresses, set the value to
+C<0.0.0.0>.
 
 =item B<server_port>
 

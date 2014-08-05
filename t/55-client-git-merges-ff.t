@@ -3,13 +3,16 @@ use warnings;
 
 use autodie qw(:all);
 use Test::More;
+use Test::Differences;
+unified_diff();
 
 BEGIN {
     eval { require Git; 1 }
         or plan skip_all => "Git.pm required for testing Git client";
 }
 
-plan 'no_plan';
+use lib 't';
+use TestBot;
 
 use App::KGB::Change;
 use App::KGB::Client::Git;
@@ -28,34 +31,14 @@ my $tmp_cleanup = not $ENV{TEST_KEEP_TMP};
 my $dir = tempdir( 'kgb-XXXXXXX', CLEANUP => $tmp_cleanup, DIR => File::Spec->tmpdir );
 diag "Temp directory $dir will pe kept" unless $tmp_cleanup;
 
+my $test_bot = TestBot->start;
+
 sub write_tmp {
     my( $fn, $content ) = @_;
 
     open my $fh, '>', "$dir/$fn";
     print $fh $content;
     close $fh;
-}
-
-if ( $ENV{TEST_KGB_BOT_DUMP} ) {
-    diag "$ENV{TEST_KGB_BOT_DUMP} will be checked for IRC dump";
-    truncate( $ENV{TEST_KGB_BOT_DUMP}, 0 ) if -e $ENV{TEST_KGB_BOT_DUMP};
-    require Test::Differences;
-    Test::Differences->import;
-}
-
-my $dump_fh;
-
-sub is_irc_output {
-    return unless my $dump = $ENV{TEST_KGB_BOT_DUMP};
-    my $wanted = shift;
-
-    use IO::File;
-    $dump_fh ||= IO::File->new("< $dump")
-        or die "Unable to open $dump: $!";
-    $dump_fh->binmode(':utf8');
-    local $/ = undef;
-    $dump_fh->seek( $dump_fh->tell, 0 );
-    eq_or_diff( "" . <$dump_fh>, $wanted );
 }
 
 my $remote = "$dir/there.git";
@@ -82,25 +65,31 @@ system 'git', 'init', '--bare';
 use Cwd;
 my $R = getcwd;
 
-my $hook_log;
+my $hook_log = "$dir/hook.log";
+my $hook = "$dir/there.git/hooks/post-receive";
 
-if ( $ENV{TEST_KGB_BOT_RUNNING} or $ENV{TEST_KGB_BOT_DUMP} ) {
+# the real test client
+{
+    my $ccf = $test_bot->client_config_file;
+    open my $fh, '>', $hook;
+    print $fh <<EOF;
+#!/bin/sh
+
+tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $ccf >> $hook_log 2>&1
+EOF
+    close $fh;
+    chmod 0755, $hook;
+}
+
+if ( $ENV{TEST_KGB_BOT_RUNNING} ) {
     diag "will try to send notifications to locally running bot";
-    system qw( git config --add kgb.conf ), "$R/eg/test-client.conf";
-    $hook_log = "$dir/hook.log";
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
-#!/bin/sh
-tee -a "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client >> $hook_log 2>&1
-EOF
-}
-else {
-    write_tmp 'there.git/hooks/post-receive', <<"EOF";
-#!/bin/sh
-cat >> "$dir/reflog"
-EOF
-}
+    open( my $fh, '>>', $hook );
+    print $fh <<"EOF";
 
-chmod 0755, "$dir/there.git/hooks/post-receive";
+cat "$dir/reflog" | PERL5LIB=$R/lib $R/script/kgb-client --conf $R/eg/test-client.conf --status-dir $dir
+EOF
+    close $fh;
+}
 
 mkdir $local;
 $ENV{GIT_DIR} = "$local/.git";
@@ -143,7 +132,7 @@ sub push_ok {
     my $ignore = $git->command( [qw( push origin --all )], { STDERR => 0 } );
     $ignore = $git->command( [qw( push origin --tags )], { STDERR => 0 } );
 
-    $c->_parse_reflog;
+    $c->_reset;
     $c->_detect_commits;
 
     diag `cat $hook_log` if $hook_log and -s $hook_log;
@@ -169,6 +158,12 @@ $commit = $c->describe_commit;
 ok( defined($commit), 'initial import commit' );
 is( $c->describe_commit, undef, 'no more commits' );
 
+TestBot->expect( '#test 03Test U. Ser (03ser) 05master '
+        . $commit->id
+        . ' 12test/06there 03old import old content * 14http://scm.host.org/there/master/?commit='
+        . $commit->id
+        . '' );
+
 #### branch, push
 my $b1 = 'develop';
 $git->command( [ 'checkout', '-b', $b1, 'master' ],
@@ -178,6 +173,15 @@ push_ok;
 $commit = $c->describe_commit;
 is( $commit->branch, $b1 );
 is( $commit->log, 'branch created' );
+
+TestBot->expect( "#test"
+        . " 05develop "
+        . $commit->id
+        . " 12test/06there "
+        . "branch created "
+        . "* 14http://scm.host.org/there/develop/?commit="
+        . $commit->id
+        . '' );
 
 $commit = $c->describe_commit;
 is( $commit, undef );
@@ -194,11 +198,39 @@ $commit = $c->describe_commit;
 is( $commit->branch, 'master' );
 is( $commit->log,    'created new content' );
 
+TestBot->expect( "#test "
+        . "03Test U. Ser (03ser)"
+        . " 05master "
+        . $commit->id
+        . " 12test/06there "
+        . "03new "
+        . "created new content "
+        . "* 14http://scm.host.org/there/master/?commit="
+        . $commit->id
+        . '' );
+
 $commit = $c->describe_commit;
 is( $commit->branch, $b1 );
 is( $commit->log,    'fast forward' );
+
+TestBot->expect( "#test "
+        . "03${TestBot::USER_NAME} (03${TestBot::USER})"
+        . " 05develop "
+        . $commit->id
+        . " 12test/06there "
+        . "fast forward "
+        . "* 14http://scm.host.org/there/develop/?commit="
+        . $commit->id
+        . '' );
 
 ##### No more commits after the last
 $commit = $c->describe_commit;
 is( $commit, undef );
 
+my $output = $test_bot->get_output;
+
+undef($test_bot);   # make sure all output us there
+
+eq_or_diff( $output, TestBot->expected_output );
+
+done_testing();
