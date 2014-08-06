@@ -16,7 +16,7 @@ __PACKAGE__->mk_accessors(
     qw( dir pid_file output_file addr port client_config_file )
 );
 
-my @info = getpwnam( getpwuid($>) );
+my @info = getpwnam( $ENV{USER} = getpwuid($>) );
 
 our $USER = $info[0];
 
